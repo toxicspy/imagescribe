@@ -62,6 +62,7 @@ export default function Home() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFont, setSelectedFont] = useState("Arial");
   const [useSmartErase, setUseSmartErase] = useState(true);
+  const [fontSizeMultiplier, setFontSizeMultiplier] = useState(1.2);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -332,15 +333,24 @@ export default function Home() {
           ctx.fillRect(canvasX0, canvasY0, width, height);
         }
 
-        // Calculate font size directly from bounding box height with slight scaling
-        const exactFontSize = Math.round((canvasY1 - canvasY0) * 1.2);
-        const fontSize = Math.max(10, exactFontSize);
+        // Calculate calibrated font size using bounding box height
+        const boxHeight = canvasY1 - canvasY0;
+        const adjustedFontSize = Math.floor(boxHeight * fontSizeMultiplier); // Calibrated multiplier for canvas rendering
+        const fontSize = Math.max(10, adjustedFontSize);
         
-        // Set text properties using automatically detected color and size
+        // Optional: Log for debugging/calibration purposes
+        console.log("Box Height:", Math.round(boxHeight), "→ Adjusted Font Size:", fontSize);
+        
+        // Set text properties using automatically detected color and calibrated size
         ctx.fillStyle = originalTextColor;
         ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
-        ctx.textBaseline = 'bottom';
+        ctx.textBaseline = 'bottom'; // Align text properly with bounding box
         ctx.textAlign = 'left';
+        
+        // Optional: Draw debug border around original text area (remove in production)
+        // ctx.strokeStyle = '#ff0000';
+        // ctx.lineWidth = 1;
+        // ctx.strokeRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
         
         // Draw new text with proper positioning (clean text only, no background)
         ctx.fillText(newText, canvasX0, canvasY1);
@@ -573,12 +583,33 @@ export default function Home() {
                       </select>
                     </div>
 
+                    <div>
+                      <Label htmlFor="fontSizeMultiplier" className="text-xs text-gray-600 mb-1 block">
+                        Font Size Calibration: {fontSizeMultiplier}x
+                      </Label>
+                      <input
+                        id="fontSizeMultiplier"
+                        type="range"
+                        min="0.8"
+                        max="1.8"
+                        step="0.1"
+                        value={fontSizeMultiplier}
+                        onChange={(e) => setFontSizeMultiplier(parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>Smaller</span>
+                        <span>Perfect Match</span>
+                        <span>Larger</span>
+                      </div>
+                    </div>
+
                     <div className="bg-blue-50 p-3 rounded-lg">
                       <div className="flex items-start space-x-2">
                         <Check className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                         <div className="text-xs text-blue-800">
                           <div className="font-medium">Automatic Detection</div>
-                          <div>Font size and color are automatically matched from the original text</div>
+                          <div>Font size (calibrated) and color are automatically matched from the original text</div>
                         </div>
                       </div>
                     </div>
