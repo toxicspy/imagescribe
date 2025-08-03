@@ -75,22 +75,26 @@ export default function Home() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Calculate canvas dimensions while maintaining aspect ratio
-    const maxWidth = 800;
-    const maxHeight = 600;
-    let { width, height } = img;
+    // Set canvas to exact pixel dimensions of the original image (no scaling)
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
 
-    if (width > maxWidth || height > maxHeight) {
-      const ratio = Math.min(maxWidth / width, maxHeight / height);
-      width *= ratio;
-      height *= ratio;
+    // Draw the original image at full resolution
+    ctx.drawImage(img, 0, 0);
+
+    // Set CSS dimensions for display while preserving resolution
+    const maxDisplayWidth = 800;
+    const maxDisplayHeight = 600;
+    const { naturalWidth, naturalHeight } = img;
+    
+    if (naturalWidth > maxDisplayWidth || naturalHeight > maxDisplayHeight) {
+      const ratio = Math.min(maxDisplayWidth / naturalWidth, maxDisplayHeight / naturalHeight);
+      canvas.style.width = `${naturalWidth * ratio}px`;
+      canvas.style.height = `${naturalHeight * ratio}px`;
+    } else {
+      canvas.style.width = `${naturalWidth}px`;
+      canvas.style.height = `${naturalHeight}px`;
     }
-
-    canvas.width = width;
-    canvas.height = height;
-
-    // Draw the original image
-    ctx.drawImage(img, 0, 0, width, height);
   }, []);
 
   const redrawCanvas = useCallback(() => {
@@ -101,7 +105,8 @@ export default function Home() {
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+    // Draw at full resolution (canvas dimensions match original image)
+    ctx.drawImage(originalImage, 0, 0);
 
     if (showBoundingBoxes && ocrData) {
       drawBoundingBoxes();
@@ -119,19 +124,11 @@ export default function Home() {
       if (word.text.trim().length > 1) {
         const { x0, y0, x1, y1 } = word.bbox;
         
-        // Scale coordinates to canvas size
-        const scaleX = canvas.width / originalImage.width;
-        const scaleY = canvas.height / originalImage.height;
-        
-        const canvasX0 = x0 * scaleX;
-        const canvasY0 = y0 * scaleY;
-        const canvasX1 = x1 * scaleX;
-        const canvasY1 = y1 * scaleY;
-
-        // Draw bounding box
+        // No scaling needed since canvas dimensions match original image
+        // Draw bounding box using original OCR coordinates
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
       }
     });
   }, [ocrData, originalImage]);
@@ -297,14 +294,11 @@ export default function Home() {
       if (word.text.toLowerCase().trim() === oldText.toLowerCase().trim()) {
         const { x0, y0, x1, y1 } = word.bbox;
         
-        // Scale coordinates to canvas size
-        const scaleX = canvas.width / originalImage.width;
-        const scaleY = canvas.height / originalImage.height;
-        
-        const canvasX0 = x0 * scaleX;
-        const canvasY0 = y0 * scaleY;
-        const canvasX1 = x1 * scaleX;
-        const canvasY1 = y1 * scaleY;
+        // No scaling needed since canvas dimensions match original image dimensions
+        const canvasX0 = x0;
+        const canvasY0 = y0;
+        const canvasX1 = x1;
+        const canvasY1 = y1;
 
         // First, sample the text color from the center of the original text
         const originalTextColor = getTextColor(ctx, canvasX0, canvasY0, canvasX1, canvasY1);
@@ -397,14 +391,15 @@ export default function Home() {
 
     const link = document.createElement('a');
     link.download = 'edited-screenshot.png';
-    link.href = canvas.toDataURL();
+    // Use PNG format for lossless compression and preserve quality
+    link.href = canvas.toDataURL('image/png');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     
     toast({
       title: "Download Complete",
-      description: "Image downloaded successfully.",
+      description: "High-quality PNG image downloaded successfully.",
     });
   };
 
