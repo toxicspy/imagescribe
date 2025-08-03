@@ -60,6 +60,9 @@ export default function Home() {
   const [newText, setNewText] = useState("");
   const [replacementHistory, setReplacementHistory] = useState<ReplacementHistoryItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [selectedFont, setSelectedFont] = useState("Arial");
+  const [textColor, setTextColor] = useState("#000000");
+  const [useSmartErase, setUseSmartErase] = useState(true);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -234,6 +237,21 @@ export default function Home() {
     }
   };
 
+  // Helper function to get average background color for better erasing
+  const getAverageColor = (imageData: ImageData): string => {
+    let r = 0, g = 0, b = 0;
+    const data = imageData.data;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+    }
+    
+    const pixelCount = data.length / 4;
+    return `rgb(${Math.round(r / pixelCount)}, ${Math.round(g / pixelCount)}, ${Math.round(b / pixelCount)})`;
+  };
+
   const handleTextReplacement = () => {
     if (!oldText.trim() || !newText.trim()) {
       toast({
@@ -262,7 +280,7 @@ export default function Home() {
     let replacementMade = false;
     
     ocrData.words.forEach(word => {
-      if (word.text.toLowerCase().trim() === oldText.toLowerCase()) {
+      if (word.text.toLowerCase().trim() === oldText.toLowerCase().trim()) {
         const { x0, y0, x1, y1 } = word.bbox;
         
         // Scale coordinates to canvas size
@@ -274,17 +292,41 @@ export default function Home() {
         const canvasX1 = x1 * scaleX;
         const canvasY1 = y1 * scaleY;
 
-        // Erase the old text with white fill
-        ctx.fillStyle = 'white';
-        ctx.fillRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
-
-        // Estimate font size based on text height
-        const fontSize = Math.max(12, (canvasY1 - canvasY0) * 0.8);
+        // Sample background color before erasing for better fill
+        const width = Math.max(1, canvasX1 - canvasX0);
+        const height = Math.max(1, canvasY1 - canvasY0);
         
-        // Draw new text
-        ctx.fillStyle = 'black';
-        ctx.font = `${fontSize}px Arial`;
-        ctx.fillText(newText, canvasX0, canvasY1 - 2);
+        // Use smart erasing with background sampling or simple white fill
+        if (useSmartErase) {
+          try {
+            const imageData = ctx.getImageData(canvasX0, canvasY0, width, height);
+            const averageColor = getAverageColor(imageData);
+            
+            // Erase the old text with sampled background color
+            ctx.fillStyle = averageColor;
+            ctx.fillRect(canvasX0, canvasY0, width, height);
+          } catch (error) {
+            // Fallback to white if sampling fails
+            ctx.fillStyle = 'white';
+            ctx.fillRect(canvasX0, canvasY0, width, height);
+          }
+        } else {
+          // Simple white fill
+          ctx.fillStyle = 'white';
+          ctx.fillRect(canvasX0, canvasY0, width, height);
+        }
+
+        // Estimate font size more accurately from bounding box height
+        const estimatedFontSize = Math.max(10, Math.round((canvasY1 - canvasY0) * 0.9));
+        
+        // Set text properties using user selections
+        ctx.fillStyle = textColor;
+        ctx.font = `bold ${estimatedFontSize}px ${selectedFont}, sans-serif`;
+        ctx.textBaseline = 'bottom';
+        ctx.textAlign = 'left';
+        
+        // Draw new text with proper positioning
+        ctx.fillText(newText, canvasX0, canvasY1);
 
         replacementMade = true;
       }
@@ -488,6 +530,56 @@ export default function Home() {
                     onChange={(e) => setNewText(e.target.value)}
                     placeholder="Enter new text"
                   />
+                </div>
+
+                {/* Text Styling Options */}
+                <div className="border-t border-gray-200 pt-4 space-y-4">
+                  <Label className="text-sm font-medium text-gray-700 mb-2 block">Text Style</Label>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="fontSelect" className="text-xs text-gray-600 mb-1 block">Font</Label>
+                      <select
+                        id="fontSelect"
+                        value={selectedFont}
+                        onChange={(e) => setSelectedFont(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="Arial">Arial</option>
+                        <option value="Helvetica">Helvetica</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Verdana">Verdana</option>
+                        <option value="Courier New">Courier New</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Trebuchet MS">Trebuchet MS</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="colorPicker" className="text-xs text-gray-600 mb-1 block">Color</Label>
+                      <input
+                        id="colorPicker"
+                        type="color"
+                        value={textColor}
+                        onChange={(e) => setTextColor(e.target.value)}
+                        className="w-full h-9 border border-gray-300 rounded-md cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <input
+                      id="smartErase"
+                      type="checkbox"
+                      checked={useSmartErase}
+                      onChange={(e) => setUseSmartErase(e.target.checked)}
+                      className="rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    <Label htmlFor="smartErase" className="text-xs text-gray-600">
+                      Smart background matching (samples colors before erasing)
+                    </Label>
+                  </div>
                 </div>
 
                 <Button 
