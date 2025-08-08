@@ -246,15 +246,15 @@ export default function Home() {
   const analyzeBackground = (ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) => {
     const width = x1 - x0;
     const height = y1 - y0;
-    const margin = Math.max(5, Math.min(width, height) * 0.2); // Adaptive margin
+    const margin = Math.max(5, Math.min(width, height) * 0.3); // Slightly larger margin for better sampling
     
-    // Sample surrounding areas (excluding the text area itself)
+    // Sample ONLY the border around the text area, excluding the text itself
     const samples = [];
-    const sampleSize = 3; // 3x3 pixel samples for better accuracy
+    const sampleSize = 2; // Smaller sample size for more precision
     
-    // Top edge samples
+    // Top border (above the text)
     for (let x = x0 - margin; x <= x1 + margin; x += sampleSize) {
-      for (let y = y0 - margin; y < y0; y += sampleSize) {
+      for (let y = y0 - margin; y < y0 - 2; y += sampleSize) { // Stop 2px before text area
         if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
           const pixel = ctx.getImageData(x, y, 1, 1).data;
           samples.push({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
@@ -262,9 +262,9 @@ export default function Home() {
       }
     }
     
-    // Bottom edge samples
+    // Bottom border (below the text)
     for (let x = x0 - margin; x <= x1 + margin; x += sampleSize) {
-      for (let y = y1; y <= y1 + margin; y += sampleSize) {
+      for (let y = y1 + 2; y <= y1 + margin; y += sampleSize) { // Start 2px after text area
         if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
           const pixel = ctx.getImageData(x, y, 1, 1).data;
           samples.push({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
@@ -272,9 +272,9 @@ export default function Home() {
       }
     }
     
-    // Left edge samples
-    for (let x = x0 - margin; x < x0; x += sampleSize) {
-      for (let y = y0; y <= y1; y += sampleSize) {
+    // Left border (left of the text)
+    for (let x = x0 - margin; x < x0 - 2; x += sampleSize) { // Stop 2px before text area
+      for (let y = y0 - 2; y <= y1 + 2; y += sampleSize) {
         if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
           const pixel = ctx.getImageData(x, y, 1, 1).data;
           samples.push({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
@@ -282,9 +282,9 @@ export default function Home() {
       }
     }
     
-    // Right edge samples
-    for (let x = x1; x <= x1 + margin; x += sampleSize) {
-      for (let y = y0; y <= y1; y += sampleSize) {
+    // Right border (right of the text)
+    for (let x = x1 + 2; x <= x1 + margin; x += sampleSize) { // Start 2px after text area
+      for (let y = y0 - 2; y <= y1 + 2; y += sampleSize) {
         if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
           const pixel = ctx.getImageData(x, y, 1, 1).data;
           samples.push({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
@@ -292,6 +292,7 @@ export default function Home() {
       }
     }
     
+    console.log(`Background analysis: sampled ${samples.length} border pixels for area (${x0},${y0}) to (${x1},${y1})`);
     return samples;
   };
 
@@ -690,29 +691,57 @@ export default function Home() {
         const canvasX1 = x1;
         const canvasY1 = y1;
 
-        // First, sample the text color from the center of the original text BEFORE erasing
+        // Step 1: Sample text color from ORIGINAL text area BEFORE any background processing
         const originalTextColor = getTextColor(ctx, canvasX0, canvasY0, canvasX1, canvasY1);
+        console.log("=== TEXT REPLACEMENT DEBUG ===");
+        console.log("Text area bounds:", { x0: canvasX0, y0: canvasY0, x1: canvasX1, y1: canvasY1 });
+        console.log("Original text color sampled:", originalTextColor);
         
-        // Use perfect background matcher or fallback methods
+        // Step 2: Apply background reconstruction (this will fill the text area with background)
         if (usePerfectMatcher) {
-          // Advanced background reconstruction
+          console.log("Using Perfect Background Matcher");
           perfectBackgroundMatcher(ctx, canvasX0, canvasY0, canvasX1, canvasY1);
         } else if (useSmartErase) {
-          // Legacy smart erase method
+          // Legacy smart erase method - sample background around text area, not from text area
+          console.log("Using Legacy Smart Erase");
           try {
-            const width = Math.max(1, canvasX1 - canvasX0);
-            const height = Math.max(1, canvasY1 - canvasY0);
-            const imageData = ctx.getImageData(canvasX0, canvasY0, width, height);
-            const averageColor = getAverageBackgroundColor(imageData);
+            const margin = 10;
+            const backgroundSamples = [];
             
-            ctx.fillStyle = averageColor;
-            ctx.fillRect(canvasX0, canvasY0, width, height);
+            // Sample background pixels around the text area (not from inside it)
+            for (let x = canvasX0 - margin; x <= canvasX1 + margin; x += 3) {
+              for (let y = canvasY0 - margin; y <= canvasY1 + margin; y += 3) {
+                // Skip pixels inside the text area
+                if (x < canvasX0 || x > canvasX1 || y < canvasY0 || y > canvasY1) {
+                  if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
+                    const pixel = ctx.getImageData(x, y, 1, 1).data;
+                    backgroundSamples.push({ r: pixel[0], g: pixel[1], b: pixel[2] });
+                  }
+                }
+              }
+            }
+            
+            if (backgroundSamples.length > 0) {
+              const avgR = Math.round(backgroundSamples.reduce((sum, s) => sum + s.r, 0) / backgroundSamples.length);
+              const avgG = Math.round(backgroundSamples.reduce((sum, s) => sum + s.g, 0) / backgroundSamples.length);
+              const avgB = Math.round(backgroundSamples.reduce((sum, s) => sum + s.b, 0) / backgroundSamples.length);
+              const backgroundFillColor = `rgb(${avgR}, ${avgG}, ${avgB})`;
+              
+              console.log("Background fill color:", backgroundFillColor);
+              ctx.fillStyle = backgroundFillColor;
+              ctx.fillRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
+            } else {
+              ctx.fillStyle = 'white';
+              ctx.fillRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
+            }
           } catch (error) {
+            console.warn("Smart erase failed:", error);
             ctx.fillStyle = 'white';
             ctx.fillRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
           }
         } else {
           // Simple white fill
+          console.log("Using simple white background fill");
           ctx.fillStyle = 'white';
           ctx.fillRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
         }
@@ -722,15 +751,23 @@ export default function Home() {
         const adjustedFontSize = Math.floor(boxHeight * fontSizeMultiplier); // Calibrated multiplier for canvas rendering
         const fontSize = Math.max(10, adjustedFontSize);
         
-        // Debug logging for color detection
-        console.log("Original Text Color Detected:", originalTextColor);
-        console.log("Selected Color (Eyedropper):", selectedColor);
-        console.log("Final Text Color Used:", selectedColor !== "#000000" ? selectedColor : originalTextColor);
-        console.log("Box Height:", Math.round(boxHeight), "→ Adjusted Font Size:", fontSize);
+        // Step 3: Determine final text color (NEVER use background color for text)
+        let finalTextColor;
+        if (selectedColor !== "#000000") {
+          // User has selected a custom color with eyedropper
+          finalTextColor = selectedColor;
+          console.log("Using eyedropper color for text:", finalTextColor);
+        } else {
+          // Use original text color that we sampled before background replacement
+          finalTextColor = originalTextColor;
+          console.log("Using auto-detected original text color:", finalTextColor);
+        }
         
-        // Set text properties using selected color (from eyedropper) or automatically detected original text color
-        const finalTextColor = selectedColor !== "#000000" ? selectedColor : originalTextColor;
-        ctx.fillStyle = finalTextColor;
+        // Step 4: Set text properties with EXPLICIT text color (never background color)
+        ctx.fillStyle = finalTextColor; // This should NEVER be white if original text was black
+        
+        console.log("Final text color applied:", finalTextColor);
+        console.log("Font size calculated:", fontSize, "from box height:", Math.round(boxHeight));
         ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
         ctx.textBaseline = 'bottom'; // Align text properly with bounding box
         ctx.textAlign = 'left';

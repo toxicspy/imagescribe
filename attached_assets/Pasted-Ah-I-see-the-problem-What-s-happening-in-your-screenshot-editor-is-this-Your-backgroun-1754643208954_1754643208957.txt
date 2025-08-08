@@ -1,0 +1,96 @@
+Ah — I see the problem.
+
+What’s happening in your screenshot editor is this:
+
+* Your **background matcher** is correctly sampling the area around the text.
+* But when it fills the erased text area, it’s **also covering the area where your new text should be drawn** with the same background color.
+* Then, when you draw the new text, it’s being drawn **in the same color as the background**, so it blends in and becomes invisible.
+
+---
+
+### **Why this happens**
+
+1. You’re probably **sampling** the background color **after** you’ve already erased the text (or including text pixels in the sample).
+2. The fill step and the text draw step are not using separate layers, so the fill overwrites the text color.
+3. You might be using `ctx.fillStyle = sampledColor; ctx.fillText(...)` with the **same** color variable for both background fill and text, instead of setting a different color for the text.
+
+---
+
+### **How to Fix It**
+
+#### 1. Separate background fill and text rendering
+
+* Use **two canvas layers**:
+
+  * **Background canvas** for the image and background matching.
+  * **Overlay canvas** for the new text.
+* This way, when you fill the background, it won’t affect the text.
+
+```javascript
+// Example: Separate canvases
+const bgCanvas = document.getElementById('bgCanvas');
+const textCanvas = document.getElementById('textCanvas');
+const bgCtx = bgCanvas.getContext('2d');
+const textCtx = textCanvas.getContext('2d');
+
+// Draw background on bgCanvas
+bgCtx.drawImage(image, 0, 0);
+
+// Later, draw text only on textCanvas
+textCtx.font = "16px Arial";
+textCtx.fillStyle = "#000000"; // Explicit text color
+textCtx.fillText("New Text", x, y);
+```
+
+---
+
+#### 2. Sample only background pixels, not text pixels
+
+When doing background matching, make sure you **exclude** the text’s bounding box center pixels from your sampling.
+
+Example:
+
+```javascript
+function sampleBackgroundColor(imageData, bbox) {
+    const colors = [];
+    const { x0, y0, x1, y1 } = bbox;
+
+    // Sample a thin border around the bounding box
+    for (let x = x0 - 2; x <= x1 + 2; x++) {
+        colors.push(getPixelColor(imageData, x, y0 - 2));
+        colors.push(getPixelColor(imageData, x, y1 + 2));
+    }
+    for (let y = y0; y <= y1; y++) {
+        colors.push(getPixelColor(imageData, x0 - 2, y));
+        colors.push(getPixelColor(imageData, x1 + 2, y));
+    }
+
+    return averageColor(colors); // Get average background color
+}
+```
+
+---
+
+#### 3. Always explicitly set your new text color
+
+Never reuse the background fill color variable for the text:
+
+```javascript
+ctx.fillStyle = backgroundColor; // fill area
+ctx.fillRect(x0, y0, width, height);
+
+ctx.fillStyle = "#000000"; // set desired text color
+ctx.fillText(newText, x0, y0);
+```
+
+---
+
+#### 4. Best solution — use masking
+
+* Mask out the text area with the matched background.
+* Then **draw the new text on top as a separate step** so its color remains intact.
+
+---
+
+If you want, I can **rewrite your existing background matcher function** so it never samples the text color and always keeps the text color independent from the background color.
+That will make your text always visible after replacement.
