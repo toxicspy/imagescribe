@@ -2,6 +2,9 @@
 
 ScreenText Editor is an OCR-based screenshot text replacement application built with React, Express, and TypeScript. The application allows users to upload images, automatically detect text using Tesseract.js OCR technology, and replace or edit the detected text directly within the image. The system operates entirely client-side for OCR processing, eliminating the need for external APIs while providing a professional text editing experience for screenshots and images.
 
+## Recent Features Added
+- **Eyedropper Tool (Color Picker)**: Allows users to sample any color from the uploaded image by clicking on pixels. The sampled color is automatically applied to text replacements, with live color preview tooltip showing HEX and RGB values during hover.
+
 # User Preferences
 
 Preferred communication style: Simple, everyday language.

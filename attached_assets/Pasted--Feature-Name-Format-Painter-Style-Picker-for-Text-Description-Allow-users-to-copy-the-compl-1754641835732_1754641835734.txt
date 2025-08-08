@@ -1,0 +1,58 @@
+*Feature Name:* Format Painter (Style Picker for Text)
+
+*Description:*
+Allow users to copy the complete formatting (font, size, style, color, language/script, bold/italic/underline, spacing) from one text element in the editor and apply it to another text element instantly.
+
+*Requirements:*
+
+1. *Activate Tool:*
+
+   * Add a “Format Painter” icon (paint roller or brush) to the toolbar.
+   * When clicked, the cursor changes to a format painter icon.
+
+2. *Functionality:*
+
+   * *Step 1:* User selects a source text element.
+   * *Step 2:* User clicks on “Format Painter” icon.
+   * *Step 3:* User clicks another text element to apply the exact formatting from the source.
+
+3. *Technical Approach:*
+
+   * Extract CSS properties from the selected text element (e.g., font-family, font-size, font-weight, font-style, color, letter-spacing, text-transform, writing-script).
+   * Store these styles temporarily in memory.
+   * Apply them to the target text element when clicked.
+
+4. *Extra Options:*
+
+   * Double-click the Format Painter icon to *keep it active* for multiple text targets until deactivated.
+   * Support copying only *specific styles* (e.g., only font family and size, but not color).
+
+*Sample Implementation (JavaScript):*
+
+javascript
+let copiedTextStyles = null;
+
+function copyTextFormat(sourceElement) {
+    const styles = window.getComputedStyle(sourceElement);
+    copiedTextStyles = {
+        fontFamily: styles.fontFamily,
+        fontSize: styles.fontSize,
+        fontWeight: styles.fontWeight,
+        fontStyle: styles.fontStyle,
+        color: styles.color,
+        letterSpacing: styles.letterSpacing,
+        textTransform: styles.textTransform,
+        writingScript: styles.writingMode || ''
+    };
+}
+
+function applyTextFormat(targetElement) {
+    if (!copiedTextStyles) return;
+    Object.assign(targetElement.style, copiedTextStyles);
+}
+
+// Example usage:
+// 1. Click source text
+copyTextFormat(document.getElementById('sourceText'));
+// 2. Click target text
+applyTextFormat(document.getElementById('targetText'));

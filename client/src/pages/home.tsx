@@ -16,7 +16,8 @@ import {
   RotateCcw, 
   X,
   Check,
-  Zap
+  Zap,
+  Pipette
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -63,6 +64,11 @@ export default function Home() {
   const [selectedFont, setSelectedFont] = useState("Arial");
   const [useSmartErase, setUseSmartErase] = useState(true);
   const [fontSizeMultiplier, setFontSizeMultiplier] = useState(1.2);
+  const [isEyedropperActive, setIsEyedropperActive] = useState(false);
+  const [selectedColor, setSelectedColor] = useState("#000000");
+  const [showColorPreview, setShowColorPreview] = useState(false);
+  const [colorPreviewPosition, setColorPreviewPosition] = useState({ x: 0, y: 0 });
+  const [previewColor, setPreviewColor] = useState("#000000");
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -263,6 +269,95 @@ export default function Home() {
     }
   };
 
+  // Helper function to convert RGB to HEX format
+  const rgbToHex = (r: number, g: number, b: number): string => {
+    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+  };
+
+  // Helper function to get color from canvas at specific position
+  const getColorAtPosition = (ctx: CanvasRenderingContext2D, x: number, y: number): { hex: string; rgb: string } => {
+    try {
+      const pixel = ctx.getImageData(x, y, 1, 1).data;
+      const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
+      const rgb = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+      return { hex, rgb };
+    } catch (error) {
+      return { hex: '#000000', rgb: 'rgb(0, 0, 0)' };
+    }
+  };
+
+  // Eyedropper functionality
+  const toggleEyedropper = () => {
+    setIsEyedropperActive(!isEyedropperActive);
+    if (isEyedropperActive) {
+      setShowColorPreview(false);
+    }
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isEyedropperActive || !originalImage) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const x = Math.floor((e.clientX - rect.left) * scaleX);
+    const y = Math.floor((e.clientY - rect.top) * scaleY);
+    
+    // Ensure coordinates are within bounds
+    if (x >= 0 && y >= 0 && x < canvas.width && y < canvas.height) {
+      const { hex } = getColorAtPosition(ctx, x, y);
+      setPreviewColor(hex);
+      setColorPreviewPosition({
+        x: e.clientX + 10,
+        y: e.clientY - 10
+      });
+      setShowColorPreview(true);
+    }
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isEyedropperActive || !originalImage) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const x = Math.floor((e.clientX - rect.left) * scaleX);
+    const y = Math.floor((e.clientY - rect.top) * scaleY);
+    
+    // Ensure coordinates are within bounds
+    if (x >= 0 && y >= 0 && x < canvas.width && y < canvas.height) {
+      const { hex, rgb } = getColorAtPosition(ctx, x, y);
+      setSelectedColor(hex);
+      setIsEyedropperActive(false);
+      setShowColorPreview(false);
+      
+      toast({
+        title: "Color Picked",
+        description: `Selected color: ${hex} (${rgb})`,
+      });
+    }
+  };
+
+  const handleCanvasMouseLeave = () => {
+    if (isEyedropperActive) {
+      setShowColorPreview(false);
+    }
+  };
+
   const handleTextReplacement = () => {
     if (!oldText.trim() || !newText.trim()) {
       toast({
@@ -335,8 +430,8 @@ export default function Home() {
         // Optional: Log for debugging/calibration purposes
         console.log("Box Height:", Math.round(boxHeight), "→ Adjusted Font Size:", fontSize);
         
-        // Set text properties using automatically detected color and calibrated size
-        ctx.fillStyle = originalTextColor;
+        // Set text properties using selected color (from eyedropper) or automatically detected color and calibrated size
+        ctx.fillStyle = selectedColor !== "#000000" ? selectedColor : originalTextColor;
         ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
         ctx.textBaseline = 'bottom'; // Align text properly with bounding box
         ctx.textAlign = 'left';
@@ -609,6 +704,35 @@ export default function Home() {
                       </div>
                     </div>
 
+                    {/* Color Selection Display */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-gray-600">Selected Text Color</Label>
+                      <div className="flex items-center space-x-2">
+                        <div 
+                          className="w-8 h-8 rounded border border-gray-300"
+                          style={{ backgroundColor: selectedColor }}
+                          data-testid="color-preview"
+                        ></div>
+                        <div className="text-xs text-gray-600">
+                          <div>{selectedColor}</div>
+                          <div className="text-gray-400">
+                            {selectedColor === "#000000" ? "Auto-detect mode" : "Custom color from eyedropper"}
+                          </div>
+                        </div>
+                        {selectedColor !== "#000000" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSelectedColor("#000000")}
+                            className="h-6 w-6 p-0 text-gray-500 hover:text-gray-700"
+                            data-testid="button-reset-color"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="flex items-center space-x-2">
                       <input
                         id="smartErase"
@@ -674,9 +798,20 @@ export default function Home() {
                       variant="outline"
                       size="sm"
                       className="w-full"
+                      data-testid="button-toggle-bounding-boxes"
                     >
                       {showBoundingBoxes ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
                       {showBoundingBoxes ? 'Hide' : 'Show'} Bounding Boxes
+                    </Button>
+                    <Button
+                      onClick={toggleEyedropper}
+                      variant={isEyedropperActive ? "default" : "outline"}
+                      size="sm"
+                      className={`w-full ${isEyedropperActive ? 'bg-primary text-primary-foreground' : ''}`}
+                      data-testid="button-eyedropper"
+                    >
+                      <Pipette className="w-4 h-4 mr-2" />
+                      {isEyedropperActive ? 'Exit Color Picker' : 'Color Picker'}
                     </Button>
                     <Button
                       onClick={resetToOriginal}
@@ -702,7 +837,13 @@ export default function Home() {
                 <canvas 
                   ref={canvasRef}
                   id="imageCanvas"
-                  className="max-w-full max-h-full border border-gray-300 rounded"
+                  className={`max-w-full max-h-full border border-gray-300 rounded ${
+                    isEyedropperActive ? 'cursor-crosshair' : 'cursor-default'
+                  }`}
+                  onClick={handleCanvasClick}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseLeave={handleCanvasMouseLeave}
+                  data-testid="image-canvas"
                 />
               </div>
             ) : (
@@ -745,6 +886,38 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Color Preview Tooltip */}
+      {showColorPreview && (
+        <div
+          className="fixed z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-2 pointer-events-none"
+          style={{
+            left: colorPreviewPosition.x,
+            top: colorPreviewPosition.y,
+          }}
+          data-testid="color-tooltip"
+        >
+          <div className="flex items-center space-x-2">
+            <div
+              className="w-6 h-6 rounded border border-gray-300"
+              style={{ backgroundColor: previewColor }}
+            ></div>
+            <div className="text-xs">
+              <div className="font-medium">{previewColor}</div>
+              <div className="text-gray-500">
+                {(() => {
+                  // Convert hex to RGB for display
+                  const hex = previewColor.replace('#', '');
+                  const r = parseInt(hex.substr(0, 2), 16);
+                  const g = parseInt(hex.substr(2, 2), 16);
+                  const b = parseInt(hex.substr(4, 2), 16);
+                  return `rgb(${r}, ${g}, ${b})`;
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
