@@ -4,6 +4,7 @@ ScreenText Editor is an OCR-based screenshot text replacement application built 
 
 ## Recent Features Added
 - **Eyedropper Tool (Color Picker)**: Allows users to sample any color from the uploaded image by clicking on pixels. The sampled color is automatically applied to text replacements, with live color preview tooltip showing HEX and RGB values during hover.
+- **Perfect Background Matcher**: Advanced content-aware background reconstruction system that intelligently analyzes surrounding pixels to recreate solid colors, gradients, and complex textures where text was removed. Uses patch-based synthesis and weighted interpolation for seamless results.
 
 # User Preferences
 

@@ -17,7 +17,8 @@ import {
   X,
   Check,
   Zap,
-  Pipette
+  Pipette,
+  Info
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -63,6 +64,7 @@ export default function Home() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFont, setSelectedFont] = useState("Arial");
   const [useSmartErase, setUseSmartErase] = useState(true);
+  const [usePerfectMatcher, setUsePerfectMatcher] = useState(true);
   const [fontSizeMultiplier, setFontSizeMultiplier] = useState(1.2);
   const [isEyedropperActive, setIsEyedropperActive] = useState(false);
   const [selectedColor, setSelectedColor] = useState("#000000");
@@ -240,8 +242,298 @@ export default function Home() {
     }
   };
 
-  // Helper function to get average background color for better erasing
-  const getAverageColor = (imageData: ImageData): string => {
+  // Advanced background analysis and reconstruction
+  const analyzeBackground = (ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) => {
+    const width = x1 - x0;
+    const height = y1 - y0;
+    const margin = Math.max(5, Math.min(width, height) * 0.2); // Adaptive margin
+    
+    // Sample surrounding areas (excluding the text area itself)
+    const samples = [];
+    const sampleSize = 3; // 3x3 pixel samples for better accuracy
+    
+    // Top edge samples
+    for (let x = x0 - margin; x <= x1 + margin; x += sampleSize) {
+      for (let y = y0 - margin; y < y0; y += sampleSize) {
+        if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          samples.push({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
+        }
+      }
+    }
+    
+    // Bottom edge samples
+    for (let x = x0 - margin; x <= x1 + margin; x += sampleSize) {
+      for (let y = y1; y <= y1 + margin; y += sampleSize) {
+        if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          samples.push({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
+        }
+      }
+    }
+    
+    // Left edge samples
+    for (let x = x0 - margin; x < x0; x += sampleSize) {
+      for (let y = y0; y <= y1; y += sampleSize) {
+        if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          samples.push({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
+        }
+      }
+    }
+    
+    // Right edge samples
+    for (let x = x1; x <= x1 + margin; x += sampleSize) {
+      for (let y = y0; y <= y1; y += sampleSize) {
+        if (x >= 0 && y >= 0 && x < ctx.canvas.width && y < ctx.canvas.height) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          samples.push({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
+        }
+      }
+    }
+    
+    return samples;
+  };
+
+  const detectBackgroundType = (samples: any[]) => {
+    if (samples.length === 0) return { type: 'solid', color: [255, 255, 255, 255] };
+    
+    // Calculate color variance
+    let rVariance = 0, gVariance = 0, bVariance = 0;
+    const avgR = samples.reduce((sum, s) => sum + s.r, 0) / samples.length;
+    const avgG = samples.reduce((sum, s) => sum + s.g, 0) / samples.length;
+    const avgB = samples.reduce((sum, s) => sum + s.b, 0) / samples.length;
+    
+    samples.forEach(s => {
+      rVariance += Math.pow(s.r - avgR, 2);
+      gVariance += Math.pow(s.g - avgG, 2);
+      bVariance += Math.pow(s.b - avgB, 2);
+    });
+    
+    const totalVariance = (rVariance + gVariance + bVariance) / (samples.length * 3);
+    
+    // Determine background type based on variance
+    if (totalVariance < 100) {
+      return { 
+        type: 'solid', 
+        color: [Math.round(avgR), Math.round(avgG), Math.round(avgB), 255]
+      };
+    } else if (totalVariance < 1000) {
+      return { type: 'gradient', samples };
+    } else {
+      return { type: 'textured', samples };
+    }
+  };
+
+  const reconstructSolidBackground = (ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, color: number[]) => {
+    ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+  };
+
+  const reconstructGradientBackground = (ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, samples: any[]) => {
+    // Create a smooth gradient based on surrounding samples
+    const imageData = ctx.createImageData(x1 - x0, y1 - y0);
+    const data = imageData.data;
+    
+    for (let y = 0; y < y1 - y0; y++) {
+      for (let x = 0; x < x1 - x0; x++) {
+        const globalX = x0 + x;
+        const globalY = y0 + y;
+        
+        // Weighted interpolation based on distance to sample points
+        let totalWeight = 0;
+        let weightedR = 0, weightedG = 0, weightedB = 0;
+        
+        samples.forEach(sample => {
+          const distance = Math.sqrt(Math.pow(globalX - sample.x, 2) + Math.pow(globalY - sample.y, 2));
+          const weight = 1 / (distance + 1); // Inverse distance weighting
+          
+          totalWeight += weight;
+          weightedR += sample.r * weight;
+          weightedG += sample.g * weight;
+          weightedB += sample.b * weight;
+        });
+        
+        const pixelIndex = (y * (x1 - x0) + x) * 4;
+        data[pixelIndex] = Math.round(weightedR / totalWeight);
+        data[pixelIndex + 1] = Math.round(weightedG / totalWeight);
+        data[pixelIndex + 2] = Math.round(weightedB / totalWeight);
+        data[pixelIndex + 3] = 255;
+      }
+    }
+    
+    ctx.putImageData(imageData, x0, y0);
+  };
+
+  const reconstructTexturedBackground = (ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, samples: any[]) => {
+    // Advanced content-aware fill using patch-based synthesis
+    const width = x1 - x0;
+    const height = y1 - y0;
+    const patchSize = 9; // 9x9 patches for texture analysis
+    const halfPatch = Math.floor(patchSize / 2);
+    
+    // Create source region excluding the text area
+    const sourceRegions = [];
+    const margin = Math.max(20, Math.min(width, height) * 0.5);
+    
+    // Collect source patches from surrounding areas
+    for (let sy = y0 - margin; sy <= y1 + margin - patchSize; sy += 2) {
+      for (let sx = x0 - margin; sx <= x1 + margin - patchSize; sx += 2) {
+        if (sx >= 0 && sy >= 0 && sx + patchSize < ctx.canvas.width && sy + patchSize < ctx.canvas.height) {
+          // Skip if patch overlaps with text area
+          if (!(sx + patchSize > x0 && sx < x1 && sy + patchSize > y0 && sy < y1)) {
+            try {
+              const patchData = ctx.getImageData(sx, sy, patchSize, patchSize);
+              sourceRegions.push({ x: sx, y: sy, data: patchData });
+            } catch (e) {
+              // Skip invalid regions
+            }
+          }
+        }
+      }
+    }
+    
+    if (sourceRegions.length === 0) {
+      // Fallback to gradient method
+      reconstructGradientBackground(ctx, x0, y0, x1, y1, samples);
+      return;
+    }
+    
+    // Fill the text area using best-matching patches
+    const targetImageData = ctx.createImageData(width, height);
+    const targetData = targetImageData.data;
+    
+    // Process in overlapping blocks for seamless results
+    const blockSize = 16;
+    const overlap = 4;
+    
+    for (let by = 0; by < height; by += blockSize - overlap) {
+      for (let bx = 0; bx < width; bx += blockSize - overlap) {
+        const blockWidth = Math.min(blockSize, width - bx);
+        const blockHeight = Math.min(blockSize, height - by);
+        
+        // Find best matching source patch
+        let bestMatch = sourceRegions[0];
+        let bestScore = Infinity;
+        
+        sourceRegions.forEach(source => {
+          if (source.data.width >= blockWidth && source.data.height >= blockHeight) {
+            const score = calculatePatchSimilarity(
+              ctx, x0 + bx, y0 + by, blockWidth, blockHeight,
+              source, halfPatch
+            );
+            
+            if (score < bestScore) {
+              bestScore = score;
+              bestMatch = source;
+            }
+          }
+        });
+        
+        // Copy best match to target with blending
+        copyPatchWithBlending(
+          bestMatch.data, targetData, 
+          0, 0, bx, by, 
+          blockWidth, blockHeight, width
+        );
+      }
+    }
+    
+    ctx.putImageData(targetImageData, x0, y0);
+  };
+
+  const calculatePatchSimilarity = (ctx: CanvasRenderingContext2D, tx: number, ty: number, tw: number, th: number, source: any, margin: number) => {
+    // Compare edge pixels to find best matching texture
+    let similarity = 0;
+    let sampleCount = 0;
+    
+    // Sample boundary pixels for comparison
+    const boundaryPixels = [];
+    
+    // Top boundary
+    for (let x = Math.max(0, tx - margin); x < Math.min(ctx.canvas.width, tx + tw + margin); x++) {
+      if (ty > 0) {
+        try {
+          const pixel = ctx.getImageData(x, ty - 1, 1, 1).data;
+          boundaryPixels.push(pixel);
+        } catch (e) {}
+      }
+    }
+    
+    // Compare with source patch edges
+    const sourceData = source.data.data;
+    for (let i = 0; i < Math.min(boundaryPixels.length, sourceData.length / 4); i++) {
+      const bp = boundaryPixels[i];
+      const sp = [sourceData[i * 4], sourceData[i * 4 + 1], sourceData[i * 4 + 2]];
+      
+      similarity += Math.sqrt(
+        Math.pow(bp[0] - sp[0], 2) + 
+        Math.pow(bp[1] - sp[1], 2) + 
+        Math.pow(bp[2] - sp[2], 2)
+      );
+      sampleCount++;
+    }
+    
+    return sampleCount > 0 ? similarity / sampleCount : Infinity;
+  };
+
+  const copyPatchWithBlending = (sourceData: ImageData, targetData: Uint8ClampedArray, sx: number, sy: number, tx: number, ty: number, width: number, height: number, targetWidth: number) => {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const sourceIndex = ((sy + y) * sourceData.width + (sx + x)) * 4;
+        const targetIndex = ((ty + y) * targetWidth + (tx + x)) * 4;
+        
+        if (sourceIndex >= 0 && sourceIndex < sourceData.data.length - 3 && 
+            targetIndex >= 0 && targetIndex < targetData.length - 3) {
+          // Simple copy with alpha blending
+          const alpha = sourceData.data[sourceIndex + 3] / 255;
+          targetData[targetIndex] = sourceData.data[sourceIndex] * alpha + targetData[targetIndex] * (1 - alpha);
+          targetData[targetIndex + 1] = sourceData.data[sourceIndex + 1] * alpha + targetData[targetIndex + 1] * (1 - alpha);
+          targetData[targetIndex + 2] = sourceData.data[sourceIndex + 2] * alpha + targetData[targetIndex + 2] * (1 - alpha);
+          targetData[targetIndex + 3] = 255;
+        }
+      }
+    }
+  };
+
+  const perfectBackgroundMatcher = (ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) => {
+    try {
+      // Step 1: Analyze surrounding background
+      const samples = analyzeBackground(ctx, x0, y0, x1, y1);
+      const backgroundType = detectBackgroundType(samples);
+      
+      // Step 2: Apply appropriate reconstruction method
+      switch (backgroundType.type) {
+        case 'solid':
+          if (backgroundType.color) {
+            reconstructSolidBackground(ctx, x0, y0, x1, y1, backgroundType.color);
+          }
+          break;
+        case 'gradient':
+          if (backgroundType.samples) {
+            reconstructGradientBackground(ctx, x0, y0, x1, y1, backgroundType.samples);
+          }
+          break;
+        case 'textured':
+          if (backgroundType.samples) {
+            reconstructTexturedBackground(ctx, x0, y0, x1, y1, backgroundType.samples);
+          }
+          break;
+        default:
+          // Fallback to simple fill
+          ctx.fillStyle = 'white';
+          ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      }
+    } catch (error) {
+      console.warn('Background matching failed, using fallback:', error);
+      // Safe fallback
+      ctx.fillStyle = 'white';
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
+  };
+
+  // Helper function to get average background color for legacy smart erase
+  const getAverageBackgroundColor = (imageData: ImageData): string => {
     let r = 0, g = 0, b = 0;
     const data = imageData.data;
     
@@ -398,28 +690,28 @@ export default function Home() {
         // First, sample the text color from the center of the original text
         const originalTextColor = getTextColor(ctx, canvasX0, canvasY0, canvasX1, canvasY1);
         
-        // Sample background color before erasing for better fill
-        const width = Math.max(1, canvasX1 - canvasX0);
-        const height = Math.max(1, canvasY1 - canvasY0);
-        
-        // Use smart erasing with background sampling or simple white fill
-        if (useSmartErase) {
+        // Use perfect background matcher or fallback methods
+        if (usePerfectMatcher) {
+          // Advanced background reconstruction
+          perfectBackgroundMatcher(ctx, canvasX0, canvasY0, canvasX1, canvasY1);
+        } else if (useSmartErase) {
+          // Legacy smart erase method
           try {
+            const width = Math.max(1, canvasX1 - canvasX0);
+            const height = Math.max(1, canvasY1 - canvasY0);
             const imageData = ctx.getImageData(canvasX0, canvasY0, width, height);
-            const averageColor = getAverageColor(imageData);
+            const averageColor = getAverageBackgroundColor(imageData);
             
-            // Erase the old text with sampled background color
             ctx.fillStyle = averageColor;
             ctx.fillRect(canvasX0, canvasY0, width, height);
           } catch (error) {
-            // Fallback to white if sampling fails
             ctx.fillStyle = 'white';
-            ctx.fillRect(canvasX0, canvasY0, width, height);
+            ctx.fillRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
           }
         } else {
           // Simple white fill
           ctx.fillStyle = 'white';
-          ctx.fillRect(canvasX0, canvasY0, width, height);
+          ctx.fillRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
         }
 
         // Calculate calibrated font size using bounding box height
@@ -733,17 +1025,58 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <input
-                        id="smartErase"
-                        type="checkbox"
-                        checked={useSmartErase}
-                        onChange={(e) => setUseSmartErase(e.target.checked)}
-                        className="rounded border-gray-300 text-primary focus:ring-primary"
-                      />
-                      <Label htmlFor="smartErase" className="text-xs text-gray-600">
-                        Smart background matching (samples colors before erasing)
-                      </Label>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          id="perfectMatcher"
+                          type="checkbox"
+                          checked={usePerfectMatcher}
+                          onChange={(e) => setUsePerfectMatcher(e.target.checked)}
+                          className="rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <Label htmlFor="perfectMatcher" className="text-xs text-gray-600">
+                          Perfect Background Matcher (intelligent texture reconstruction)
+                        </Label>
+                      </div>
+                      
+                      {!usePerfectMatcher && (
+                        <div className="flex items-center space-x-2 ml-6">
+                          <input
+                            id="smartErase"
+                            type="checkbox"
+                            checked={useSmartErase}
+                            onChange={(e) => setUseSmartErase(e.target.checked)}
+                            className="rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="smartErase" className="text-xs text-gray-600">
+                            Legacy smart erase (basic color sampling)
+                          </Label>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Background Matcher Information */}
+                    <div className={`p-3 rounded-lg ${usePerfectMatcher ? 'bg-green-50' : 'bg-yellow-50'}`}>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-4 h-4 mt-0.5 flex-shrink-0">
+                          {usePerfectMatcher ? (
+                            <Check className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <Info className="w-4 h-4 text-yellow-600" />
+                          )}
+                        </div>
+                        <div className={`text-xs ${usePerfectMatcher ? 'text-green-800' : 'text-yellow-800'}`}>
+                          <div className="font-medium">
+                            {usePerfectMatcher ? 'Perfect Matcher Active' : 'Legacy Mode'}
+                          </div>
+                          <div>
+                            {usePerfectMatcher ? 
+                              'Analyzes surrounding pixels and intelligently reconstructs solid colors, gradients, and complex textures for seamless results.' :
+                              'Uses basic color averaging for simple backgrounds. Enable Perfect Matcher for best results.'
+                            }
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
