@@ -554,8 +554,11 @@ export default function Home() {
     
     try {
       const pixel = ctx.getImageData(centerX, centerY, 1, 1).data;
-      return `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+      const textColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+      console.log(`Sampled text color at (${centerX}, ${centerY}):`, textColor, `[R:${pixel[0]}, G:${pixel[1]}, B:${pixel[2]}]`);
+      return textColor;
     } catch (error) {
+      console.warn('Text color sampling failed, using black fallback:', error);
       // Fallback to black if sampling fails
       return 'rgb(0, 0, 0)';
     }
@@ -687,7 +690,7 @@ export default function Home() {
         const canvasX1 = x1;
         const canvasY1 = y1;
 
-        // First, sample the text color from the center of the original text
+        // First, sample the text color from the center of the original text BEFORE erasing
         const originalTextColor = getTextColor(ctx, canvasX0, canvasY0, canvasX1, canvasY1);
         
         // Use perfect background matcher or fallback methods
@@ -719,11 +722,15 @@ export default function Home() {
         const adjustedFontSize = Math.floor(boxHeight * fontSizeMultiplier); // Calibrated multiplier for canvas rendering
         const fontSize = Math.max(10, adjustedFontSize);
         
-        // Optional: Log for debugging/calibration purposes
+        // Debug logging for color detection
+        console.log("Original Text Color Detected:", originalTextColor);
+        console.log("Selected Color (Eyedropper):", selectedColor);
+        console.log("Final Text Color Used:", selectedColor !== "#000000" ? selectedColor : originalTextColor);
         console.log("Box Height:", Math.round(boxHeight), "→ Adjusted Font Size:", fontSize);
         
-        // Set text properties using selected color (from eyedropper) or automatically detected color and calibrated size
-        ctx.fillStyle = selectedColor !== "#000000" ? selectedColor : originalTextColor;
+        // Set text properties using selected color (from eyedropper) or automatically detected original text color
+        const finalTextColor = selectedColor !== "#000000" ? selectedColor : originalTextColor;
+        ctx.fillStyle = finalTextColor;
         ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
         ctx.textBaseline = 'bottom'; // Align text properly with bounding box
         ctx.textAlign = 'left';
@@ -1008,7 +1015,7 @@ export default function Home() {
                         <div className="text-xs text-gray-600">
                           <div>{selectedColor}</div>
                           <div className="text-gray-400">
-                            {selectedColor === "#000000" ? "Auto-detect mode" : "Custom color from eyedropper"}
+                            {selectedColor === "#000000" ? "Auto-detect mode (will sample text color)" : "Custom color from eyedropper"}
                           </div>
                         </div>
                         {selectedColor !== "#000000" && (
