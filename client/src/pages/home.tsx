@@ -90,10 +90,24 @@ export default function Home() {
     // Draw the original image at full resolution
     ctx.drawImage(img, 0, 0);
 
-    // Set CSS dimensions for display while preserving resolution
-    const maxDisplayWidth = 800;
-    const maxDisplayHeight = 600;
+    // Responsive canvas sizing - adapt to viewport
     const { naturalWidth, naturalHeight } = img;
+    
+    // Get available space (viewport minus sidebar and padding)
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    // Calculate available space for canvas (accounting for sidebar and UI elements)
+    const sidebarWidth = viewportWidth >= 1024 ? 320 : 0; // Hide sidebar on mobile
+    const headerHeight = 73;
+    const padding = 48; // 24px padding on each side
+    
+    const availableWidth = viewportWidth - sidebarWidth - padding;
+    const availableHeight = viewportHeight - headerHeight - padding;
+    
+    // Calculate maximum display dimensions
+    const maxDisplayWidth = Math.max(300, availableWidth * 0.95);
+    const maxDisplayHeight = Math.max(200, availableHeight * 0.95);
     
     if (naturalWidth > maxDisplayWidth || naturalHeight > maxDisplayHeight) {
       const ratio = Math.min(maxDisplayWidth / naturalWidth, maxDisplayHeight / naturalHeight);
@@ -855,6 +869,18 @@ export default function Home() {
     setOldText(word);
   };
 
+  // Handle window resize to adjust canvas size
+  useEffect(() => {
+    const handleResize = () => {
+      if (originalImage) {
+        setupCanvas(originalImage);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [originalImage, setupCanvas]);
+
   useEffect(() => {
     redrawCanvas();
   }, [redrawCanvas]);
@@ -864,35 +890,36 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <ImageIcon className="w-5 h-5 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">ScreenText Editor</h1>
+            <h1 className="text-lg sm:text-xl font-semibold text-gray-900">ScreenText Editor</h1>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <Button 
               onClick={downloadImage} 
               disabled={!originalImage}
               className="bg-primary hover:bg-primary/90"
+              size="sm"
             >
-              <Download className="w-4 h-4 mr-2" />
-              Download
+              <Download className="w-4 h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Download</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-73px)]">
+      <div className="flex flex-col lg:flex-row h-[calc(100vh-73px)]">
         {/* Sidebar */}
-        <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+        <div className="w-full lg:w-80 bg-white border-b lg:border-b-0 lg:border-r border-gray-200 flex flex-col order-2 lg:order-1">
           {/* Upload Section */}
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Upload Image</h3>
+          <div className="p-4 sm:p-6 border-b border-gray-200">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Upload Image</h3>
             <div 
-              className={`upload-area border-2 border-dashed rounded-lg p-6 text-center cursor-pointer ${
+              className={`upload-area border-2 border-dashed rounded-lg p-4 sm:p-6 text-center cursor-pointer ${
                 isDragOver ? 'drag-over border-primary' : 'border-gray-300 hover:border-primary'
               }`}
               onClick={() => fileInputRef.current?.click()}
@@ -900,7 +927,7 @@ export default function Home() {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              <Upload className="mx-auto h-12 w-12 text-gray-400" />
+              <Upload className="mx-auto h-8 w-8 sm:h-12 sm:w-12 text-gray-400" />
               <p className="mt-2 text-sm text-gray-600">
                 <span className="font-medium text-primary">Click to upload</span> or drag and drop
               </p>
@@ -917,8 +944,8 @@ export default function Home() {
 
           {/* OCR Processing Status */}
           {isProcessingOCR && (
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Text Recognition</h3>
+            <div className="p-4 sm:p-6 border-b border-gray-200">
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Text Recognition</h3>
               <div className="space-y-3">
                 <div className="flex items-center">
                   <Loader2 className="animate-spin h-4 w-4 text-primary mr-3" />
@@ -932,8 +959,8 @@ export default function Home() {
 
           {/* Text Replacement Controls */}
           {ocrData && !isProcessingOCR && (
-            <div className="flex-1 p-6 overflow-y-auto">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Text Replacement</h3>
+            <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Text Replacement</h3>
               
               {/* Detected Words */}
               <div className="mb-6">
@@ -1207,14 +1234,14 @@ export default function Home() {
         </div>
 
         {/* Main Canvas Area */}
-        <div className="flex-1 flex flex-col bg-gray-100">
-          <div className="flex-1 flex items-center justify-center p-6">
+        <div className="flex-1 flex flex-col bg-gray-100 order-1 lg:order-2">
+          <div className="flex-1 flex items-center justify-center p-3 sm:p-6">
             {originalImage ? (
-              <div className="canvas-container bg-white rounded-lg shadow-lg p-4">
+              <div className="canvas-container bg-white rounded-lg shadow-lg p-2 sm:p-4 w-full max-w-full overflow-auto">
                 <canvas 
                   ref={canvasRef}
                   id="imageCanvas"
-                  className={`max-w-full max-h-full border border-gray-300 rounded ${
+                  className={`border border-gray-300 rounded ${
                     isEyedropperActive ? 'cursor-crosshair' : 'cursor-default'
                   }`}
                   onClick={handleCanvasClick}
@@ -1225,24 +1252,24 @@ export default function Home() {
               </div>
             ) : (
               /* Welcome State */
-              <div className="text-center max-w-md">
+              <div className="text-center max-w-md mx-auto px-4">
                 {/* Modern device mockup showing screenshot editing */}
-                <div className="mx-auto w-64 h-40 bg-white rounded-lg shadow-lg p-4 mb-6 relative overflow-hidden">
+                <div className="mx-auto w-48 sm:w-64 h-32 sm:h-40 bg-white rounded-lg shadow-lg p-3 sm:p-4 mb-6 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-purple-50"></div>
                   <div className="relative z-10">
-                    <div className="w-full h-6 bg-gray-200 rounded mb-2"></div>
-                    <div className="w-3/4 h-4 bg-blue-200 rounded mb-2"></div>
-                    <div className="w-1/2 h-4 bg-green-200 rounded mb-2"></div>
-                    <div className="absolute bottom-4 right-4 w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                      <svg className="w-4 h-4 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-full h-4 sm:h-6 bg-gray-200 rounded mb-2"></div>
+                    <div className="w-3/4 h-3 sm:h-4 bg-blue-200 rounded mb-2"></div>
+                    <div className="w-1/2 h-3 sm:h-4 bg-green-200 rounded mb-2"></div>
+                    <div className="absolute bottom-3 sm:bottom-4 right-3 sm:right-4 w-6 sm:w-8 h-6 sm:h-8 bg-primary rounded-full flex items-center justify-center">
+                      <svg className="w-3 sm:w-4 h-3 sm:h-4 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
                       </svg>
                     </div>
                   </div>
                 </div>
                 
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">OCR Screenshot Editor</h2>
-                <p className="text-gray-600 mb-6">Upload a screenshot to automatically detect and replace text using advanced OCR technology.</p>
+                <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">OCR Screenshot Editor</h2>
+                <p className="text-sm sm:text-base text-gray-600 mb-6">Upload a screenshot to automatically detect and replace text using advanced OCR technology.</p>
                 
                 <div className="space-y-3 text-sm text-gray-500">
                   <div className="flex items-center justify-center">
