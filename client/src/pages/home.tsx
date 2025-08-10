@@ -30,6 +30,7 @@ declare global {
 }
 
 interface OCRWord {
+  id: string;
   text: string;
   confidence: number;
   bbox: {
@@ -38,6 +39,9 @@ interface OCRWord {
     x1: number;
     y1: number;
   };
+  isSelected?: boolean;
+  isEdited?: boolean;
+  originalText?: string;
 }
 
 interface OCRData {
@@ -58,7 +62,7 @@ export default function Home() {
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrProgressText, setOcrProgressText] = useState("");
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(false);
-  const [oldText, setOldText] = useState("");
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [newText, setNewText] = useState("");
   const [replacementHistory, setReplacementHistory] = useState<ReplacementHistoryItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -146,10 +150,20 @@ export default function Home() {
       if (word.text.trim().length > 1) {
         const { x0, y0, x1, y1 } = word.bbox;
         
-        // No scaling needed since canvas dimensions match original image
-        // Draw bounding box using original OCR coordinates
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 2;
+        // Different colors for different states
+        if (word.isSelected) {
+          ctx.strokeStyle = '#00ff00'; // Green for selected
+          ctx.lineWidth = 3;
+          ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+          ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+        } else if (word.isEdited) {
+          ctx.strokeStyle = '#0066ff'; // Blue for edited
+          ctx.lineWidth = 2;
+        } else {
+          ctx.strokeStyle = '#ef4444'; // Red for detected
+          ctx.lineWidth = 2;
+        }
+        
         ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
       }
     });
@@ -180,12 +194,21 @@ export default function Home() {
         }
       });
 
-      setOcrData(data);
+      // Assign unique IDs to detected words
+      const wordsWithIds = data.words.map((word: any, index: number) => ({
+        ...word,
+        id: `text_${Date.now()}_${index}`,
+        isSelected: false,
+        isEdited: false,
+        originalText: word.text
+      }));
+
+      setOcrData({ words: wordsWithIds });
       setIsProcessingOCR(false);
       
       toast({
         title: "OCR Complete",
-        description: `Detected ${data.words.filter((w: OCRWord) => w.text.trim().length > 1).length} words`,
+        description: `Detected ${wordsWithIds.filter((w: OCRWord) => w.text.trim().length > 1).length} words`,
       });
     } catch (error) {
       console.error('OCR Error:', error);
@@ -632,14 +655,21 @@ export default function Home() {
     }
   };
 
+  // Function to find which text was clicked
+  const findTextByCoordinates = (x: number, y: number): OCRWord | null => {
+    if (!ocrData) return null;
+    
+    return ocrData.words.find(word => {
+      const { x0, y0, x1, y1 } = word.bbox;
+      return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+    }) || null;
+  };
+
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isEyedropperActive || !originalImage) return;
+    if (!originalImage) return;
     
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
     
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -650,15 +680,59 @@ export default function Home() {
     
     // Ensure coordinates are within bounds
     if (x >= 0 && y >= 0 && x < canvas.width && y < canvas.height) {
-      const { hex, rgb } = getColorAtPosition(ctx, x, y);
-      setSelectedColor(hex);
-      setIsEyedropperActive(false);
-      setShowColorPreview(false);
-      
-      toast({
-        title: "Color Picked",
-        description: `Selected color: ${hex} (${rgb})`,
-      });
+      if (isEyedropperActive) {
+        // Eyedropper functionality
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        const { hex, rgb } = getColorAtPosition(ctx, x, y);
+        setSelectedColor(hex);
+        setIsEyedropperActive(false);
+        setShowColorPreview(false);
+        
+        toast({
+          title: "Color Picked",
+          description: `Selected color: ${hex} (${rgb})`,
+        });
+      } else {
+        // Text selection functionality
+        const clickedText = findTextByCoordinates(x, y);
+        if (clickedText) {
+          // Clear previous selection and select this text
+          setOcrData(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              words: prev.words.map(word => ({
+                ...word,
+                isSelected: word.id === clickedText.id
+              }))
+            };
+          });
+          
+          setSelectedTextId(clickedText.id);
+          setNewText(clickedText.text); // Pre-populate with current text
+          
+          toast({
+            title: "Text Selected",
+            description: `Selected: "${clickedText.text}"`,
+          });
+        } else {
+          // Clear selection if clicking on empty area
+          setOcrData(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              words: prev.words.map(word => ({
+                ...word,
+                isSelected: false
+              }))
+            };
+          });
+          setSelectedTextId(null);
+          setNewText("");
+        }
+      }
     }
   };
 
@@ -669,10 +743,10 @@ export default function Home() {
   };
 
   const handleTextReplacement = () => {
-    if (!oldText.trim() || !newText.trim()) {
+    if (!selectedTextId || !newText.trim()) {
       toast({
-        title: "Missing Text",
-        description: "Please enter both old and new text.",
+        title: "Missing Selection",
+        description: "Please select a text and enter replacement text.",
         variant: "destructive",
       });
       return;
@@ -693,11 +767,22 @@ export default function Home() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Find the selected word
+    const selectedWord = ocrData.words.find(word => word.id === selectedTextId);
+    if (!selectedWord) {
+      toast({
+        title: "Text Not Found",
+        description: "Selected text no longer available.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     let replacementMade = false;
     
-    ocrData.words.forEach(word => {
-      if (word.text.toLowerCase().trim() === oldText.toLowerCase().trim()) {
-        const { x0, y0, x1, y1 } = word.bbox;
+    // Only replace the specific selected word
+    if (selectedWord) {
+        const { x0, y0, x1, y1 } = selectedWord.bbox;
         
         // No scaling needed since canvas dimensions match original image dimensions
         const canvasX0 = x0;
@@ -794,30 +879,42 @@ export default function Home() {
         // Draw new text with proper positioning (clean text only, no background)
         ctx.fillText(newText, canvasX0, canvasY1);
 
+        // Update the word in OCR data to mark as edited
+        setOcrData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            words: prev.words.map(word => 
+              word.id === selectedTextId 
+                ? { ...word, text: newText, isEdited: true, isSelected: false }
+                : { ...word, isSelected: false }
+            )
+          };
+        });
+
         replacementMade = true;
-      }
-    });
+    }
 
     if (replacementMade) {
       const newHistoryItem: ReplacementHistoryItem = {
         id: Date.now().toString(),
-        oldText,
+        oldText: selectedWord.originalText || selectedWord.text,
         newText,
         timestamp: new Date(),
       };
       
       setReplacementHistory(prev => [newHistoryItem, ...prev.slice(0, 4)]);
-      setOldText("");
+      setSelectedTextId(null);
       setNewText("");
       
       toast({
         title: "Text Replaced",
-        description: `Replaced "${oldText}" with "${newText}"`,
+        description: `Replaced "${selectedWord.text}" with "${newText}"`,
       });
     } else {
       toast({
         title: "Text Not Found",
-        description: `Text "${oldText}" not found in the image.`,
+        description: "Selected text could not be replaced.",
         variant: "destructive",
       });
     }
@@ -850,10 +947,27 @@ export default function Home() {
 
   const resetToOriginal = () => {
     if (originalImage) {
+      // Reset OCR data to original state
+      if (ocrData) {
+        setOcrData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            words: prev.words.map(word => ({
+              ...word,
+              text: word.originalText || word.text,
+              isEdited: false,
+              isSelected: false
+            }))
+          };
+        });
+      }
+      
       redrawCanvas();
       setReplacementHistory([]);
-      setOldText("");
+      setSelectedTextId(null);
       setNewText("");
+      
       toast({
         title: "Reset Complete",
         description: "Image reset to original state.",
@@ -865,8 +979,21 @@ export default function Home() {
     setReplacementHistory(prev => prev.filter(item => item.id !== id));
   };
 
-  const selectDetectedWord = (word: string) => {
-    setOldText(word);
+  const selectDetectedWord = (wordObj: OCRWord) => {
+    // Clear previous selections and select this word
+    setOcrData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        words: prev.words.map(w => ({
+          ...w,
+          isSelected: w.id === wordObj.id
+        }))
+      };
+    });
+    
+    setSelectedTextId(wordObj.id);
+    setNewText(wordObj.text);
   };
 
   // Handle window resize to adjust canvas size
@@ -973,7 +1100,7 @@ export default function Home() {
                           key={index}
                           variant="secondary"
                           className="detected-word cursor-pointer hover:bg-primary hover:text-primary-foreground text-xs"
-                          onClick={() => selectDetectedWord(word.text)}
+                          onClick={() => selectDetectedWord(word)}
                           title={`Confidence: ${Math.round(word.confidence)}%`}
                         >
                           {word.text}
@@ -988,17 +1115,50 @@ export default function Home() {
 
               {/* Replacement Form */}
               <div className="space-y-4">
-                <div>
-                  <Label htmlFor="oldText" className="text-sm font-medium text-gray-700 mb-1 block">
-                    Text to Replace
-                  </Label>
-                  <Input
-                    id="oldText"
-                    value={oldText}
-                    onChange={(e) => setOldText(e.target.value)}
-                    placeholder="Enter text to replace"
-                  />
-                </div>
+                {selectedTextId ? (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-green-800">Selected Text</p>
+                        <p className="text-sm text-green-600">
+                          {ocrData.words.find(w => w.id === selectedTextId)?.text}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedTextId(null);
+                          setNewText("");
+                          setOcrData(prev => {
+                            if (!prev) return prev;
+                            return {
+                              ...prev,
+                              words: prev.words.map(word => ({
+                                ...word,
+                                isSelected: false
+                              }))
+                            };
+                          });
+                        }}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <div className="flex items-start space-x-2">
+                      <Info className="w-4 h-4 text-blue-600 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">How to Edit Text</p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          Click on any text in the image to select it, or click on a detected word above.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 <div>
                   <Label htmlFor="newText" className="text-sm font-medium text-gray-700 mb-1 block">
@@ -1008,7 +1168,8 @@ export default function Home() {
                     id="newText"
                     value={newText}
                     onChange={(e) => setNewText(e.target.value)}
-                    placeholder="Enter new text"
+                    placeholder={selectedTextId ? "Enter new text" : "Select text first"}
+                    disabled={!selectedTextId}
                   />
                 </div>
 
@@ -1155,7 +1316,7 @@ export default function Home() {
                 <Button 
                   onClick={handleTextReplacement}
                   className="w-full bg-green-500 hover:bg-green-600"
-                  disabled={!oldText.trim() || !newText.trim()}
+                  disabled={!selectedTextId || !newText.trim()}
                 >
                   <Zap className="w-4 h-4 mr-2" />
                   Replace Text
