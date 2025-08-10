@@ -134,10 +134,38 @@ export default function Home() {
     // Draw at full resolution (canvas dimensions match original image)
     ctx.drawImage(originalImage, 0, 0);
 
+    // Redraw any edited text
+    if (ocrData) {
+      ocrData.words.forEach(word => {
+        if (word.isEdited && word.text !== word.originalText) {
+          const { x0, y0, x1, y1 } = word.bbox;
+          
+          // Apply background reconstruction first
+          if (usePerfectMatcher) {
+            perfectBackgroundMatcher(ctx, x0, y0, x1, y1);
+          } else if (useSmartErase) {
+            // Simple background fill for redraw
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+          }
+          
+          // Redraw the replacement text
+          const boxHeight = y1 - y0;
+          const fontSize = Math.max(10, Math.floor(boxHeight * fontSizeMultiplier));
+          
+          ctx.fillStyle = selectedColor !== "#000000" ? selectedColor : '#000000';
+          ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
+          ctx.textBaseline = 'bottom';
+          ctx.textAlign = 'left';
+          ctx.fillText(word.text, x0, y1);
+        }
+      });
+    }
+
     if (showBoundingBoxes && ocrData) {
       drawBoundingBoxes();
     }
-  }, [originalImage, showBoundingBoxes, ocrData]);
+  }, [originalImage, showBoundingBoxes, ocrData, selectedColor, selectedFont, fontSizeMultiplier, usePerfectMatcher, useSmartErase]);
 
   const drawBoundingBoxes = useCallback(() => {
     const canvas = canvasRef.current;
@@ -697,7 +725,11 @@ export default function Home() {
       } else {
         // Text selection functionality
         const clickedText = findTextByCoordinates(x, y);
+        console.log("Canvas click detected at:", x, y, "Found text:", clickedText);
+        
         if (clickedText) {
+          console.log("Selecting text with ID:", clickedText.id, "Text:", clickedText.text);
+          
           // Clear previous selection and select this text
           setOcrData(prev => {
             if (!prev) return prev;
@@ -743,6 +775,10 @@ export default function Home() {
   };
 
   const handleTextReplacement = () => {
+    console.log("=== TEXT REPLACEMENT STARTED ===");
+    console.log("Selected text ID:", selectedTextId);
+    console.log("New text:", newText);
+    
     if (!selectedTextId || !newText.trim()) {
       toast({
         title: "Missing Selection",
@@ -769,6 +805,8 @@ export default function Home() {
 
     // Find the selected word
     const selectedWord = ocrData.words.find(word => word.id === selectedTextId);
+    console.log("Found selected word:", selectedWord);
+    
     if (!selectedWord) {
       toast({
         title: "Text Not Found",
@@ -877,6 +915,8 @@ export default function Home() {
         // ctx.strokeRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
         
         // Draw new text with proper positioning (clean text only, no background)
+        console.log("Drawing replacement text:", newText, "at position:", canvasX0, canvasY1);
+        console.log("Font settings:", ctx.font, "Fill style:", ctx.fillStyle);
         ctx.fillText(newText, canvasX0, canvasY1);
 
         // Update the word in OCR data to mark as edited
@@ -893,6 +933,9 @@ export default function Home() {
         });
 
         replacementMade = true;
+        
+        // Force canvas redraw to show the changes
+        console.log("Text replacement completed, forcing redraw...");
     }
 
     if (replacementMade) {
@@ -906,6 +949,9 @@ export default function Home() {
       setReplacementHistory(prev => [newHistoryItem, ...prev.slice(0, 4)]);
       setSelectedTextId(null);
       setNewText("");
+      
+      // Redraw canvas to show changes immediately
+      redrawCanvas();
       
       toast({
         title: "Text Replaced",
