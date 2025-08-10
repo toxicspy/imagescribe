@@ -219,50 +219,20 @@ export default function Home() {
             setOcrProgress(progress);
             setOcrProgressText(`Recognizing text... ${progress}%`);
           }
-        },
-        tessedit_pageseg_mode: '6', // Uniform block of text
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?@#$%^&*()_+-=[]{}|;:\'",<.>/?`~',
-        preserve_interword_spaces: '1',
-        tessedit_create_hocr: '1' // Generate HOCR output for better word boundaries
+        }
       });
 
-      // Process and merge adjacent partial words that belong together
-      const processedWords = mergeAdjacentWords(data.words);
-      
-      // Assign unique IDs to detected words and expand bounding boxes
-      const wordsWithIds = processedWords.map((word: any, index: number) => {
-        // Expand bounding box slightly to capture full characters
-        const padding = Math.max(3, Math.floor((word.bbox.y1 - word.bbox.y0) * 0.15));
-        
-        return {
-          ...word,
-          id: `text_${Date.now()}_${index}`,
-          isSelected: false,
-          isEdited: false,
-          originalText: word.text,
-          bbox: {
-            x0: Math.max(0, word.bbox.x0 - padding),
-            y0: Math.max(0, word.bbox.y0 - padding),
-            x1: word.bbox.x1 + padding,
-            y1: word.bbox.y1 + padding
-          }
-        };
-      });
+      // Assign unique IDs to detected words
+      const wordsWithIds = data.words.map((word: any, index: number) => ({
+        ...word,
+        id: `text_${Date.now()}_${index}`,
+        isSelected: false,
+        isEdited: false,
+        originalText: word.text
+      }));
 
       setOcrData({ words: wordsWithIds });
       setIsProcessingOCR(false);
-      
-      console.log("OCR Processing completed:");
-      console.log("Original words count:", data.words.length);
-      console.log("After merging:", processedWords.length);
-      console.log("Final words with IDs:", wordsWithIds.length);
-      
-      // Log any merged words for debugging
-      wordsWithIds.forEach((word: OCRWord) => {
-        if (word.text.length > 8) {
-          console.log(`Long word detected: "${word.text}" (${word.text.length} chars) at bbox:`, word.bbox);
-        }
-      });
       
       toast({
         title: "OCR Complete",
@@ -279,68 +249,7 @@ export default function Home() {
     }
   }, [toast]);
 
-  // Function to merge adjacent words that likely belong together
-  const mergeAdjacentWords = useCallback((words: any[]) => {
-    if (!words || words.length === 0) return words;
-    
-    const mergedWords = [];
-    let currentWord = null;
-    
-    // Sort words by their position (left to right, top to bottom)
-    const sortedWords = [...words].sort((a, b) => {
-      const yDiff = a.bbox.y0 - b.bbox.y0;
-      if (Math.abs(yDiff) > 10) return yDiff; // Different lines
-      return a.bbox.x0 - b.bbox.x0; // Same line, sort by x position
-    });
-    
-    for (const word of sortedWords) {
-      if (word.text.trim().length === 0) continue;
-      
-      if (!currentWord) {
-        currentWord = { ...word };
-        continue;
-      }
-      
-      // Check if this word should be merged with the current word
-      const heightDiff = Math.abs(word.bbox.y0 - currentWord.bbox.y0);
-      const xGap = word.bbox.x0 - currentWord.bbox.x1;
-      const avgHeight = (word.bbox.y1 - word.bbox.y0 + currentWord.bbox.y1 - currentWord.bbox.y0) / 2;
-      
-      // Merge if words are on the same line and close together
-      if (heightDiff < avgHeight * 0.3 && xGap < avgHeight * 0.5 && xGap > -avgHeight * 0.1) {
-        // Check if merging would create a more complete word
-        const mergedText = currentWord.text + word.text;
-        const isLikelyPartialWord = currentWord.text.length < 3 || 
-                                  word.text.length < 3 ||
-                                  !currentWord.text.endsWith(' ') ||
-                                  mergedText.length <= 12; // Reasonable word length
-        
-        if (isLikelyPartialWord) {
-          // Merge the words
-          currentWord.text = mergedText.trim();
-          currentWord.bbox = {
-            x0: Math.min(currentWord.bbox.x0, word.bbox.x0),
-            y0: Math.min(currentWord.bbox.y0, word.bbox.y0),
-            x1: Math.max(currentWord.bbox.x1, word.bbox.x1),
-            y1: Math.max(currentWord.bbox.y1, word.bbox.y1)
-          };
-          currentWord.confidence = Math.min(currentWord.confidence, word.confidence);
-          continue;
-        }
-      }
-      
-      // Don't merge - add current word to results and start new one
-      mergedWords.push(currentWord);
-      currentWord = { ...word };
-    }
-    
-    // Add the last word
-    if (currentWord) {
-      mergedWords.push(currentWord);
-    }
-    
-    return mergedWords;
-  }, []);
+
 
   const handleImageUpload = useCallback((file: File) => {
     // Validate file type
@@ -776,28 +685,14 @@ export default function Home() {
     }
   };
 
-  // Function to find which text was clicked with improved tolerance
+  // Function to find which text was clicked
   const findTextByCoordinates = (x: number, y: number): OCRWord | null => {
     if (!ocrData) return null;
     
-    // First try exact match
-    let clickedWord = ocrData.words.find(word => {
+    return ocrData.words.find(word => {
       const { x0, y0, x1, y1 } = word.bbox;
       return x >= x0 && x <= x1 && y >= y0 && y <= y1;
-    });
-    
-    // If no exact match, try with expanded tolerance for better click detection
-    if (!clickedWord) {
-      clickedWord = ocrData.words.find(word => {
-        const { x0, y0, x1, y1 } = word.bbox;
-        const tolerance = Math.max(5, Math.floor((y1 - y0) * 0.2));
-        
-        return x >= (x0 - tolerance) && x <= (x1 + tolerance) && 
-               y >= (y0 - tolerance) && y <= (y1 + tolerance);
-      });
-    }
-    
-    return clickedWord || null;
+    }) || null;
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -835,9 +730,7 @@ export default function Home() {
         console.log("Canvas click detected at:", x, y, "Found text:", clickedText);
         
         if (clickedText) {
-          console.log("Selecting text with ID:", clickedText.id);
-          console.log("Text content:", `"${clickedText.text}" (${clickedText.text.length} characters)`);
-          console.log("Bounding box:", clickedText.bbox);
+          console.log("Selecting text with ID:", clickedText.id, "Text:", clickedText.text);
           
           // Clear previous selection and select this text
           setOcrData(prev => {
