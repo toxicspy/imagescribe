@@ -150,9 +150,10 @@ export default function Home() {
             ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
           }
           
-          // Redraw the replacement text with its stored color
+          // Redraw the replacement text with its stored color and perfect font size
+          const boxWidth = x1 - x0;
           const boxHeight = y1 - y0;
-          const fontSize = Math.max(10, Math.floor(boxHeight * fontSizeMultiplier));
+          const fontSize = calculatePerfectFontSize(ctx, word.text, boxWidth, boxHeight, selectedFont);
           
           // Use the word's stored custom color, or fall back to black
           const textColor = word.customColor || '#000000';
@@ -635,6 +636,38 @@ export default function Home() {
     }
   };
 
+  // Helper function to calculate perfect font size using measureText for pixel-perfect matching
+  const calculatePerfectFontSize = (ctx: CanvasRenderingContext2D, text: string, targetWidth: number, targetHeight: number, fontFamily: string): number => {
+    // Start with height-based estimation
+    let fontSize = Math.floor(targetHeight * 0.9); // Good starting point based on bounding box height
+    let attempts = 0;
+    const maxAttempts = 50; // Prevent infinite loops
+    
+    // Fine-tune using measureText to match width
+    while (attempts < maxAttempts) {
+      ctx.font = `bold ${fontSize}px ${fontFamily}, sans-serif`;
+      const metrics = ctx.measureText(text);
+      const currentWidth = metrics.width;
+      
+      // Check if we're within acceptable range (±2px tolerance)
+      if (Math.abs(currentWidth - targetWidth) <= 2) {
+        break;
+      }
+      
+      // Adjust font size based on width difference
+      if (currentWidth > targetWidth) {
+        fontSize = Math.max(8, fontSize - 1); // Don't go below 8px
+      } else {
+        fontSize = Math.min(72, fontSize + 1); // Don't go above 72px
+      }
+      
+      attempts++;
+    }
+    
+    console.log(`Perfect font size calculated: ${fontSize}px for text "${text}" (target: ${targetWidth}x${targetHeight})`);
+    return fontSize;
+  };
+
   // Helper function to convert RGB to HEX format
   const rgbToHex = (r: number, g: number, b: number): string => {
     return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
@@ -888,10 +921,10 @@ export default function Home() {
           ctx.fillRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
         }
 
-        // Calculate calibrated font size using bounding box height
+        // Calculate perfect font size using both width and height for pixel-perfect matching
+        const boxWidth = canvasX1 - canvasX0;
         const boxHeight = canvasY1 - canvasY0;
-        const adjustedFontSize = Math.floor(boxHeight * fontSizeMultiplier); // Calibrated multiplier for canvas rendering
-        const fontSize = Math.max(10, adjustedFontSize);
+        const fontSize = calculatePerfectFontSize(ctx, newText, boxWidth, boxHeight, selectedFont);
         
         // Step 3: Determine final text color (NEVER use background color for text)
         let finalTextColor;
