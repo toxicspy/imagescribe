@@ -1,0 +1,75 @@
+Perfect 👌 you nailed the **font size**, now the last issue is the **baseline alignment**.
+
+This happens because in **canvas (or most rendering systems)**, `ctx.fillText(text, x, y)` places the text at the **baseline** of the font, not at the top of the bounding box.
+
+So when you use the OCR bounding box `y0`/`y1` directly, the text looks slightly up or down compared to the original.
+
+---
+
+## ✅ How to Fix the Text Position
+
+### 1. Use `textBaseline` correctly
+
+Set the canvas text baseline before drawing:
+
+```javascript
+ctx.textBaseline = "alphabetic"; // default, aligns with natural baseline
+ctx.fillText(newText, word.bbox.x0, word.bbox.y1);
+```
+
+Other options are `"top"`, `"middle"`, `"bottom"`. For bounding boxes, `"alphabetic"` or `"middle"` usually work best.
+
+---
+
+### 2. Compensate using bounding box height
+
+If OCR gave you `bbox.y0` (top) and `bbox.y1` (bottom):
+
+```javascript
+const textHeight = word.bbox.y1 - word.bbox.y0;
+ctx.textBaseline = "top";
+ctx.fillText(newText, word.bbox.x0, word.bbox.y0);
+```
+
+or, if you want center alignment:
+
+```javascript
+ctx.textBaseline = "middle";
+ctx.fillText(newText, word.bbox.x0, word.bbox.y0 + textHeight / 2);
+```
+
+---
+
+### 3. Fine-tune with a small offset
+
+Sometimes descenders (y, g, j, p, q) cause mismatch. You can add a tiny manual offset:
+
+```javascript
+const offset = 2; // adjust until perfect
+ctx.fillText(newText, word.bbox.x0, word.bbox.y1 - offset);
+```
+
+---
+
+## ⚡ Best Practice
+
+* Use **`measureText().actualBoundingBoxAscent`** and **`actualBoundingBoxDescent`** (modern browsers support this).
+  That gives you exact top & bottom distances for the text:
+
+```javascript
+ctx.font = `${fontSize}px Arial`;
+const metrics = ctx.measureText(newText);
+
+const ascent = metrics.actualBoundingBoxAscent;
+const descent = metrics.actualBoundingBoxDescent;
+const textHeight = ascent + descent;
+
+// Align with OCR bbox
+ctx.fillText(newText, word.bbox.x0, word.bbox.y1 - descent);
+```
+
+✔️ This ensures the replacement text **sits exactly where the old one was**.
+
+---
+
+👉 Do you want me to build you a **ready-made function** where you just pass `(word.bbox, word.text, newText)` and it **perfectly replaces the word** (size + position 100% correct)?

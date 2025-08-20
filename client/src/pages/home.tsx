@@ -150,18 +150,19 @@ export default function Home() {
             ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
           }
           
-          // Redraw the replacement text with its stored color and perfect font size
+          // Redraw the replacement text with its stored color, perfect font size, and perfect positioning
           const boxWidth = x1 - x0;
           const boxHeight = y1 - y0;
           const fontSize = calculatePerfectFontSize(ctx, word.text, boxWidth, boxHeight, selectedFont);
+          const perfectPosition = calculatePerfectTextPosition(ctx, word.text, fontSize, selectedFont, x0, y0, y1);
           
           // Use the word's stored custom color, or fall back to black
           const textColor = word.customColor || '#000000';
           ctx.fillStyle = textColor;
           ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
-          ctx.textBaseline = 'bottom';
+          ctx.textBaseline = 'alphabetic'; // Use natural baseline for precise positioning
           ctx.textAlign = 'left';
-          ctx.fillText(word.text, x0, y1);
+          ctx.fillText(word.text, perfectPosition.x, perfectPosition.y);
         }
       });
     }
@@ -668,6 +669,32 @@ export default function Home() {
     return fontSize;
   };
 
+  // Helper function to calculate perfect text position using actual bounding box metrics
+  const calculatePerfectTextPosition = (ctx: CanvasRenderingContext2D, text: string, fontSize: number, fontFamily: string, bboxX0: number, bboxY0: number, bboxY1: number): { x: number, y: number } => {
+    ctx.font = `bold ${fontSize}px ${fontFamily}, sans-serif`;
+    const metrics = ctx.measureText(text);
+    
+    // Use actual bounding box metrics if available (modern browsers)
+    if (metrics.actualBoundingBoxAscent !== undefined && metrics.actualBoundingBoxDescent !== undefined) {
+      const ascent = metrics.actualBoundingBoxAscent;
+      const descent = metrics.actualBoundingBoxDescent;
+      
+      // Position text so it fits exactly within the OCR bounding box
+      const x = bboxX0;
+      const y = bboxY1 - descent; // Align bottom of text with bottom of bbox
+      
+      console.log(`Perfect positioning: ascent=${ascent}, descent=${descent}, y=${y}`);
+      return { x, y };
+    } else {
+      // Fallback for older browsers - use approximation
+      const x = bboxX0;
+      const y = bboxY1 - (fontSize * 0.2); // Approximate descent
+      
+      console.log(`Fallback positioning: y=${y}`);
+      return { x, y };
+    }
+  };
+
   // Helper function to convert RGB to HEX format
   const rgbToHex = (r: number, g: number, b: number): string => {
     return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
@@ -938,24 +965,28 @@ export default function Home() {
           console.log("Using auto-detected original text color:", finalTextColor);
         }
         
-        // Step 4: Set text properties with EXPLICIT text color (never background color)
+        // Step 4: Calculate perfect text position using actual bounding box metrics
+        const perfectPosition = calculatePerfectTextPosition(ctx, newText, fontSize, selectedFont, canvasX0, canvasY0, canvasY1);
+        
+        // Step 5: Set text properties with EXPLICIT text color and perfect positioning
         ctx.fillStyle = finalTextColor; // This should NEVER be white if original text was black
+        ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
+        ctx.textBaseline = 'alphabetic'; // Use natural baseline for precise positioning
+        ctx.textAlign = 'left';
         
         console.log("Final text color applied:", finalTextColor);
-        console.log("Font size calculated:", fontSize, "from box height:", Math.round(boxHeight));
-        ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
-        ctx.textBaseline = 'bottom'; // Align text properly with bounding box
-        ctx.textAlign = 'left';
+        console.log("Font size calculated:", fontSize, "from box dimensions:", boxWidth + "x" + boxHeight);
+        console.log("Perfect positioning calculated:", perfectPosition);
         
         // Optional: Draw debug border around original text area (remove in production)
         // ctx.strokeStyle = '#ff0000';
         // ctx.lineWidth = 1;
         // ctx.strokeRect(canvasX0, canvasY0, canvasX1 - canvasX0, canvasY1 - canvasY0);
         
-        // Draw new text with proper positioning (clean text only, no background)
-        console.log("Drawing replacement text:", newText, "at position:", canvasX0, canvasY1);
+        // Draw new text with pixel-perfect positioning
+        console.log("Drawing replacement text:", newText, "at perfect position:", perfectPosition.x, perfectPosition.y);
         console.log("Font settings:", ctx.font, "Fill style:", ctx.fillStyle);
-        ctx.fillText(newText, canvasX0, canvasY1);
+        ctx.fillText(newText, perfectPosition.x, perfectPosition.y);
 
         // Update the word in OCR data to mark as edited and store its color
         setOcrData(prev => {
