@@ -1,0 +1,78 @@
+Ah 👍 I see the issue — this happens when your app is **using a single global color state** for all texts instead of storing the color per text object.
+
+---
+
+## 🔍 Why it’s happening
+
+* You probably have something like:
+
+```javascript
+let selectedColor = "#000"; 
+```
+
+and then when you change it, **all future replacements** use that same `selectedColor`.
+
+* Since text objects don’t store their own color, they all end up with the **last chosen color**.
+
+---
+
+## ✅ How to fix it
+
+You need to store the **color as a property of each text object** (like font, size, position).
+
+### Example text object structure:
+
+```javascript
+const textElement = {
+  id: "text_1",
+  content: "Hello",
+  x: 120,
+  y: 80,
+  font: "16px Arial",
+  color: "#ff0000" // 🔴 store color per text
+};
+```
+
+---
+
+### When updating/replacing text:
+
+Instead of using a global color, apply the text’s own color:
+
+```javascript
+function updateText(textObj, newContent, newColor) {
+    // clear old word
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(textObj.x, textObj.y - 16, ctx.measureText(textObj.content).width, 20);
+
+    // update content and color
+    textObj.content = newContent;
+    if (newColor) textObj.color = newColor;
+
+    // draw new word with its own color
+    ctx.font = textObj.font;
+    ctx.fillStyle = textObj.color;
+    ctx.fillText(textObj.content, textObj.x, textObj.y);
+}
+```
+
+---
+
+### ✅ Result
+
+* If you set **red** for `text_1`, it stays red.
+* If you set **blue** for `text_2`, only that word changes to blue.
+* They won’t overwrite each other’s styles anymore.
+
+---
+
+⚡ Pro tip: If you’re using an array of text objects, always **re-draw all text objects from scratch** after a change. That way each one keeps its own font, size, and color consistently.
+
+---
+
+Do you want me to give you a **full working snippet** where:
+
+1. You click a word
+2. Replace it
+3. Pick a unique color per word
+   … and they all keep their **own separate colors**?

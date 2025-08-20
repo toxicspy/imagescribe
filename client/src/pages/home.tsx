@@ -42,6 +42,7 @@ interface OCRWord {
   isSelected?: boolean;
   isEdited?: boolean;
   originalText?: string;
+  customColor?: string; // Store individual color per text object
 }
 
 interface OCRData {
@@ -149,11 +150,13 @@ export default function Home() {
             ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
           }
           
-          // Redraw the replacement text
+          // Redraw the replacement text with its stored color
           const boxHeight = y1 - y0;
           const fontSize = Math.max(10, Math.floor(boxHeight * fontSizeMultiplier));
           
-          ctx.fillStyle = selectedColor !== "#000000" ? selectedColor : '#000000';
+          // Use the word's stored custom color, or fall back to black
+          const textColor = word.customColor || '#000000';
+          ctx.fillStyle = textColor;
           ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
           ctx.textBaseline = 'bottom';
           ctx.textAlign = 'left';
@@ -921,14 +924,20 @@ export default function Home() {
         console.log("Font settings:", ctx.font, "Fill style:", ctx.fillStyle);
         ctx.fillText(newText, canvasX0, canvasY1);
 
-        // Update the word in OCR data to mark as edited
+        // Update the word in OCR data to mark as edited and store its color
         setOcrData(prev => {
           if (!prev) return prev;
           return {
             ...prev,
             words: prev.words.map(word => 
               word.id === selectedTextId 
-                ? { ...word, text: newText, isEdited: true, isSelected: false }
+                ? { 
+                    ...word, 
+                    text: newText, 
+                    isEdited: true, 
+                    isSelected: false,
+                    customColor: finalTextColor // Store the specific color used for this text
+                  }
                 : { ...word, isSelected: false }
             )
           };
