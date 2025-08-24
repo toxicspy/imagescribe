@@ -44,7 +44,10 @@ interface OCRWord {
   originalText?: string;
   customColor?: string; // Store individual color per text object
   hasBackgroundBox?: boolean; // Whether this text has a background box
-  backgroundBoxPadding?: number; // Background box padding for this text
+  backgroundBoxPaddingTop?: number; // Background box top padding for this text
+  backgroundBoxPaddingBottom?: number; // Background box bottom padding for this text
+  backgroundBoxPaddingLeft?: number; // Background box left padding for this text
+  backgroundBoxPaddingRight?: number; // Background box right padding for this text
   backgroundBoxColor?: string; // Background box color for this text
 }
 
@@ -80,7 +83,10 @@ export default function Home() {
   const [colorPreviewPosition, setColorPreviewPosition] = useState({ x: 0, y: 0 });
   const [previewColor, setPreviewColor] = useState("#000000");
   const [useBackgroundBox, setUseBackgroundBox] = useState(false);
-  const [backgroundBoxPadding, setBackgroundBoxPadding] = useState(2);
+  const [backgroundBoxPaddingTop, setBackgroundBoxPaddingTop] = useState(2);
+  const [backgroundBoxPaddingBottom, setBackgroundBoxPaddingBottom] = useState(2);
+  const [backgroundBoxPaddingLeft, setBackgroundBoxPaddingLeft] = useState(2);
+  const [backgroundBoxPaddingRight, setBackgroundBoxPaddingRight] = useState(2);
   const [backgroundBoxColor, setBackgroundBoxColor] = useState("#FFFFFF");
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -163,11 +169,11 @@ export default function Home() {
           const perfectPosition = calculatePerfectTextPosition(ctx, word.text, fontSize, selectedFont, x0, y0, y1);
           
           // Optionally draw background box if it was enabled for this text
-          if (word.hasBackgroundBox && word.backgroundBoxPadding !== undefined && word.backgroundBoxColor) {
-            const expandedX0 = x0 - word.backgroundBoxPadding;
-            const expandedY0 = y0 - word.backgroundBoxPadding;
-            const expandedX1 = x1 + word.backgroundBoxPadding;
-            const expandedY1 = y1 + word.backgroundBoxPadding;
+          if (word.hasBackgroundBox && word.backgroundBoxPaddingTop !== undefined && word.backgroundBoxColor) {
+            const expandedX0 = x0 - (word.backgroundBoxPaddingLeft || 0);
+            const expandedY0 = y0 - (word.backgroundBoxPaddingTop || 0);
+            const expandedX1 = x1 + (word.backgroundBoxPaddingRight || 0);
+            const expandedY1 = y1 + (word.backgroundBoxPaddingBottom || 0);
             
             ctx.fillStyle = word.backgroundBoxColor;
             ctx.fillRect(expandedX0, expandedY0, expandedX1 - expandedX0, expandedY1 - expandedY0);
@@ -187,7 +193,7 @@ export default function Home() {
     if (showBoundingBoxes && ocrData) {
       drawBoundingBoxes();
     }
-  }, [originalImage, showBoundingBoxes, ocrData, selectedColor, selectedFont, fontSizeMultiplier, usePerfectMatcher, useSmartErase, useBackgroundBox, backgroundBoxPadding, backgroundBoxColor]);
+  }, [originalImage, showBoundingBoxes, ocrData, selectedColor, selectedFont, fontSizeMultiplier, usePerfectMatcher, useSmartErase, useBackgroundBox, backgroundBoxPaddingTop, backgroundBoxPaddingBottom, backgroundBoxPaddingLeft, backgroundBoxPaddingRight, backgroundBoxColor]);
 
   const drawBoundingBoxes = useCallback(() => {
     const canvas = canvasRef.current;
@@ -984,14 +990,17 @@ export default function Home() {
         
         // Step 4: Optionally draw background box if enabled
         if (useBackgroundBox) {
-          const expandedX0 = canvasX0 - backgroundBoxPadding;
-          const expandedY0 = canvasY0 - backgroundBoxPadding;
-          const expandedX1 = canvasX1 + backgroundBoxPadding;
-          const expandedY1 = canvasY1 + backgroundBoxPadding;
+          const expandedX0 = canvasX0 - backgroundBoxPaddingLeft;
+          const expandedY0 = canvasY0 - backgroundBoxPaddingTop;
+          const expandedX1 = canvasX1 + backgroundBoxPaddingRight;
+          const expandedY1 = canvasY1 + backgroundBoxPaddingBottom;
           
           console.log("Drawing background box:", {
             color: backgroundBoxColor,
-            padding: backgroundBoxPadding,
+            paddingTop: backgroundBoxPaddingTop,
+            paddingBottom: backgroundBoxPaddingBottom,
+            paddingLeft: backgroundBoxPaddingLeft,
+            paddingRight: backgroundBoxPaddingRight,
             bounds: { x0: expandedX0, y0: expandedY0, x1: expandedX1, y1: expandedY1 }
           });
           
@@ -1036,7 +1045,10 @@ export default function Home() {
                     isSelected: false,
                     customColor: finalTextColor, // Store the specific color used for this text
                     hasBackgroundBox: useBackgroundBox, // Store whether background box was used
-                    backgroundBoxPadding: useBackgroundBox ? backgroundBoxPadding : undefined,
+                    backgroundBoxPaddingTop: useBackgroundBox ? backgroundBoxPaddingTop : undefined,
+                    backgroundBoxPaddingBottom: useBackgroundBox ? backgroundBoxPaddingBottom : undefined,
+                    backgroundBoxPaddingLeft: useBackgroundBox ? backgroundBoxPaddingLeft : undefined,
+                    backgroundBoxPaddingRight: useBackgroundBox ? backgroundBoxPaddingRight : undefined,
                     backgroundBoxColor: useBackgroundBox ? backgroundBoxColor : undefined
                   }
                 : { ...word, isSelected: false }
@@ -1433,25 +1445,79 @@ export default function Home() {
 
                       {useBackgroundBox && (
                         <div className="ml-6 space-y-3">
-                          <div>
-                            <Label htmlFor="backgroundBoxPadding" className="text-xs text-gray-600 mb-1 block">
-                              Box Size: {backgroundBoxPadding}px padding
-                            </Label>
-                            <input
-                              id="backgroundBoxPadding"
-                              type="range"
-                              min="0"
-                              max="10"
-                              step="1"
-                              value={backgroundBoxPadding}
-                              onChange={(e) => setBackgroundBoxPadding(parseInt(e.target.value))}
-                              className="w-full"
-                              data-testid="slider-background-box-padding"
-                            />
-                            <div className="flex justify-between text-xs text-gray-500 mt-1">
-                              <span>Tight</span>
-                              <span>Medium</span>
-                              <span>Wide</span>
+                          <div className="space-y-3">
+                            <div>
+                              <Label htmlFor="backgroundBoxPaddingTop" className="text-xs text-gray-600 mb-1 block">
+                                Top Padding: {backgroundBoxPaddingTop}px
+                              </Label>
+                              <input
+                                id="backgroundBoxPaddingTop"
+                                type="range"
+                                min="0"
+                                max="10"
+                                step="1"
+                                value={backgroundBoxPaddingTop}
+                                onChange={(e) => setBackgroundBoxPaddingTop(parseInt(e.target.value))}
+                                className="w-full"
+                                data-testid="slider-background-box-padding-top"
+                              />
+                            </div>
+                            
+                            <div>
+                              <Label htmlFor="backgroundBoxPaddingBottom" className="text-xs text-gray-600 mb-1 block">
+                                Bottom Padding: {backgroundBoxPaddingBottom}px
+                              </Label>
+                              <input
+                                id="backgroundBoxPaddingBottom"
+                                type="range"
+                                min="0"
+                                max="10"
+                                step="1"
+                                value={backgroundBoxPaddingBottom}
+                                onChange={(e) => setBackgroundBoxPaddingBottom(parseInt(e.target.value))}
+                                className="w-full"
+                                data-testid="slider-background-box-padding-bottom"
+                              />
+                            </div>
+                            
+                            <div>
+                              <Label htmlFor="backgroundBoxPaddingLeft" className="text-xs text-gray-600 mb-1 block">
+                                Left Padding: {backgroundBoxPaddingLeft}px
+                              </Label>
+                              <input
+                                id="backgroundBoxPaddingLeft"
+                                type="range"
+                                min="0"
+                                max="10"
+                                step="1"
+                                value={backgroundBoxPaddingLeft}
+                                onChange={(e) => setBackgroundBoxPaddingLeft(parseInt(e.target.value))}
+                                className="w-full"
+                                data-testid="slider-background-box-padding-left"
+                              />
+                            </div>
+                            
+                            <div>
+                              <Label htmlFor="backgroundBoxPaddingRight" className="text-xs text-gray-600 mb-1 block">
+                                Right Padding: {backgroundBoxPaddingRight}px
+                              </Label>
+                              <input
+                                id="backgroundBoxPaddingRight"
+                                type="range"
+                                min="0"
+                                max="10"
+                                step="1"
+                                value={backgroundBoxPaddingRight}
+                                onChange={(e) => setBackgroundBoxPaddingRight(parseInt(e.target.value))}
+                                className="w-full"
+                                data-testid="slider-background-box-padding-right"
+                              />
+                            </div>
+                            
+                            <div className="flex justify-between text-xs text-gray-500">
+                              <span>0px</span>
+                              <span>5px</span>
+                              <span>10px</span>
                             </div>
                           </div>
                           
