@@ -1505,7 +1505,7 @@ export default function Home() {
                                 id="backgroundBoxPaddingRight"
                                 type="range"
                                 min="0"
-                                max="20"
+                                max="40"
                                 step="1"
                                 value={backgroundBoxPaddingRight}
                                 onChange={(e) => setBackgroundBoxPaddingRight(parseInt(e.target.value))}
@@ -1516,8 +1516,8 @@ export default function Home() {
                             
                             <div className="flex justify-between text-xs text-gray-500">
                               <span>0px</span>
-                              <span>10px</span>
                               <span>20px</span>
+                              <span>40px</span>
                             </div>
                           </div>
                           
