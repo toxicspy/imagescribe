@@ -43,6 +43,9 @@ interface OCRWord {
   isEdited?: boolean;
   originalText?: string;
   customColor?: string; // Store individual color per text object
+  hasBackgroundBox?: boolean; // Whether this text has a background box
+  backgroundBoxPadding?: number; // Background box padding for this text
+  backgroundBoxColor?: string; // Background box color for this text
 }
 
 interface OCRData {
@@ -76,6 +79,9 @@ export default function Home() {
   const [showColorPreview, setShowColorPreview] = useState(false);
   const [colorPreviewPosition, setColorPreviewPosition] = useState({ x: 0, y: 0 });
   const [previewColor, setPreviewColor] = useState("#000000");
+  const [useBackgroundBox, setUseBackgroundBox] = useState(false);
+  const [backgroundBoxPadding, setBackgroundBoxPadding] = useState(2);
+  const [backgroundBoxColor, setBackgroundBoxColor] = useState("#FFFFFF");
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -156,6 +162,17 @@ export default function Home() {
           const fontSize = calculatePerfectFontSize(ctx, word.text, boxWidth, boxHeight, selectedFont);
           const perfectPosition = calculatePerfectTextPosition(ctx, word.text, fontSize, selectedFont, x0, y0, y1);
           
+          // Optionally draw background box if it was enabled for this text
+          if (word.hasBackgroundBox && word.backgroundBoxPadding !== undefined && word.backgroundBoxColor) {
+            const expandedX0 = x0 - word.backgroundBoxPadding;
+            const expandedY0 = y0 - word.backgroundBoxPadding;
+            const expandedX1 = x1 + word.backgroundBoxPadding;
+            const expandedY1 = y1 + word.backgroundBoxPadding;
+            
+            ctx.fillStyle = word.backgroundBoxColor;
+            ctx.fillRect(expandedX0, expandedY0, expandedX1 - expandedX0, expandedY1 - expandedY0);
+          }
+
           // Use the word's stored custom color, or fall back to black
           const textColor = word.customColor || '#000000';
           ctx.fillStyle = textColor;
@@ -170,7 +187,7 @@ export default function Home() {
     if (showBoundingBoxes && ocrData) {
       drawBoundingBoxes();
     }
-  }, [originalImage, showBoundingBoxes, ocrData, selectedColor, selectedFont, fontSizeMultiplier, usePerfectMatcher, useSmartErase]);
+  }, [originalImage, showBoundingBoxes, ocrData, selectedColor, selectedFont, fontSizeMultiplier, usePerfectMatcher, useSmartErase, useBackgroundBox, backgroundBoxPadding, backgroundBoxColor]);
 
   const drawBoundingBoxes = useCallback(() => {
     const canvas = canvasRef.current;
@@ -965,10 +982,27 @@ export default function Home() {
           console.log("Using auto-detected original text color:", finalTextColor);
         }
         
-        // Step 4: Calculate perfect text position using actual bounding box metrics
+        // Step 4: Optionally draw background box if enabled
+        if (useBackgroundBox) {
+          const expandedX0 = canvasX0 - backgroundBoxPadding;
+          const expandedY0 = canvasY0 - backgroundBoxPadding;
+          const expandedX1 = canvasX1 + backgroundBoxPadding;
+          const expandedY1 = canvasY1 + backgroundBoxPadding;
+          
+          console.log("Drawing background box:", {
+            color: backgroundBoxColor,
+            padding: backgroundBoxPadding,
+            bounds: { x0: expandedX0, y0: expandedY0, x1: expandedX1, y1: expandedY1 }
+          });
+          
+          ctx.fillStyle = backgroundBoxColor;
+          ctx.fillRect(expandedX0, expandedY0, expandedX1 - expandedX0, expandedY1 - expandedY0);
+        }
+
+        // Step 5: Calculate perfect text position using actual bounding box metrics
         const perfectPosition = calculatePerfectTextPosition(ctx, newText, fontSize, selectedFont, canvasX0, canvasY0, canvasY1);
         
-        // Step 5: Set text properties with EXPLICIT text color and perfect positioning
+        // Step 6: Set text properties with EXPLICIT text color and perfect positioning
         ctx.fillStyle = finalTextColor; // This should NEVER be white if original text was black
         ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
         ctx.textBaseline = 'alphabetic'; // Use natural baseline for precise positioning
@@ -988,7 +1022,7 @@ export default function Home() {
         console.log("Font settings:", ctx.font, "Fill style:", ctx.fillStyle);
         ctx.fillText(newText, perfectPosition.x, perfectPosition.y);
 
-        // Update the word in OCR data to mark as edited and store its color
+        // Update the word in OCR data to mark as edited and store its styling
         setOcrData(prev => {
           if (!prev) return prev;
           return {
@@ -1000,7 +1034,10 @@ export default function Home() {
                     text: newText, 
                     isEdited: true, 
                     isSelected: false,
-                    customColor: finalTextColor // Store the specific color used for this text
+                    customColor: finalTextColor, // Store the specific color used for this text
+                    hasBackgroundBox: useBackgroundBox, // Store whether background box was used
+                    backgroundBoxPadding: useBackgroundBox ? backgroundBoxPadding : undefined,
+                    backgroundBoxColor: useBackgroundBox ? backgroundBoxColor : undefined
                   }
                 : { ...word, isSelected: false }
             )
@@ -1376,6 +1413,100 @@ export default function Home() {
                           </Button>
                         )}
                       </div>
+                    </div>
+
+                    {/* Background Box Options */}
+                    <div className="space-y-3 border-t border-gray-200 pt-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          id="useBackgroundBox"
+                          type="checkbox"
+                          checked={useBackgroundBox}
+                          onChange={(e) => setUseBackgroundBox(e.target.checked)}
+                          className="rounded border-gray-300 text-primary focus:ring-primary"
+                          data-testid="checkbox-background-box"
+                        />
+                        <Label htmlFor="useBackgroundBox" className="text-xs text-gray-600">
+                          Add background box behind text (helps cover stubborn original text)
+                        </Label>
+                      </div>
+
+                      {useBackgroundBox && (
+                        <div className="ml-6 space-y-3">
+                          <div>
+                            <Label htmlFor="backgroundBoxPadding" className="text-xs text-gray-600 mb-1 block">
+                              Box Size: {backgroundBoxPadding}px padding
+                            </Label>
+                            <input
+                              id="backgroundBoxPadding"
+                              type="range"
+                              min="0"
+                              max="10"
+                              step="1"
+                              value={backgroundBoxPadding}
+                              onChange={(e) => setBackgroundBoxPadding(parseInt(e.target.value))}
+                              className="w-full"
+                              data-testid="slider-background-box-padding"
+                            />
+                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                              <span>Tight</span>
+                              <span>Medium</span>
+                              <span>Wide</span>
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <Label className="text-xs text-gray-600 mb-1 block">Background Color</Label>
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="color"
+                                value={backgroundBoxColor}
+                                onChange={(e) => setBackgroundBoxColor(e.target.value)}
+                                className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
+                                title="Choose background box color"
+                                data-testid="input-background-box-color"
+                              />
+                              <div className="text-xs text-gray-600">
+                                <div>{backgroundBoxColor}</div>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    if (originalImage && canvasRef.current) {
+                                      const canvas = canvasRef.current;
+                                      const ctx = canvas.getContext('2d');
+                                      const selectedWord = ocrData?.words.find(w => w.id === selectedTextId);
+                                      if (ctx && selectedWord) {
+                                        // Sample color from around the text area
+                                        const { x0, y0, x1, y1 } = selectedWord.bbox;
+                                        const centerX = Math.floor((x0 + x1) / 2);
+                                        const centerY = Math.floor(y0 - 5); // Sample slightly above the text
+                                        const color = getColorAtPosition(ctx, centerX, centerY);
+                                        setBackgroundBoxColor(color.hex);
+                                      }
+                                    }
+                                  }}
+                                  className="h-6 text-xs"
+                                  disabled={!selectedTextId}
+                                  data-testid="button-auto-detect-bg-color"
+                                >
+                                  Auto-detect
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-amber-50 p-2 rounded-lg">
+                            <div className="flex items-start space-x-2">
+                              <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                              <div className="text-xs text-amber-800">
+                                <div className="font-medium">Background Box</div>
+                                <div>Use this when original text is still faintly visible. Adjust the size to fully cover the original word.</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-3">
