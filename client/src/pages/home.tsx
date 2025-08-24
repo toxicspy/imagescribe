@@ -1454,7 +1454,7 @@ export default function Home() {
                                 id="backgroundBoxPaddingTop"
                                 type="range"
                                 min="0"
-                                max="10"
+                                max="15"
                                 step="1"
                                 value={backgroundBoxPaddingTop}
                                 onChange={(e) => setBackgroundBoxPaddingTop(parseInt(e.target.value))}
@@ -1471,7 +1471,7 @@ export default function Home() {
                                 id="backgroundBoxPaddingBottom"
                                 type="range"
                                 min="0"
-                                max="10"
+                                max="15"
                                 step="1"
                                 value={backgroundBoxPaddingBottom}
                                 onChange={(e) => setBackgroundBoxPaddingBottom(parseInt(e.target.value))}
@@ -1488,7 +1488,7 @@ export default function Home() {
                                 id="backgroundBoxPaddingLeft"
                                 type="range"
                                 min="0"
-                                max="10"
+                                max="15"
                                 step="1"
                                 value={backgroundBoxPaddingLeft}
                                 onChange={(e) => setBackgroundBoxPaddingLeft(parseInt(e.target.value))}
@@ -1505,7 +1505,7 @@ export default function Home() {
                                 id="backgroundBoxPaddingRight"
                                 type="range"
                                 min="0"
-                                max="10"
+                                max="15"
                                 step="1"
                                 value={backgroundBoxPaddingRight}
                                 onChange={(e) => setBackgroundBoxPaddingRight(parseInt(e.target.value))}
@@ -1516,8 +1516,8 @@ export default function Home() {
                             
                             <div className="flex justify-between text-xs text-gray-500">
                               <span>0px</span>
-                              <span>5px</span>
-                              <span>10px</span>
+                              <span>7px</span>
+                              <span>15px</span>
                             </div>
                           </div>
                           
